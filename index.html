@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Discord Lite Ultimate</title>
+    <title>Discord Lite Fixed</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         :root {
@@ -880,8 +880,8 @@
                 keepalive: 15,
                 reconnectPeriod: 1000,
                 connectTimeout: 10 * 1000,
-                clean: false, // Maintain offline subscription records on HiveMQ
-                clientId: 'disc_cl_' + appSettings.username
+                clean: false, 
+                clientId: 'disc_cl_' + appSettings.username + '_' + Math.random().toString(16).substring(2,6)
             });
 
             mqttClient.on('connect', () => {
@@ -904,11 +904,6 @@
                 
                 // Subscribe to Private Mailbox Pipeline Node
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`, { qos: 1 });
-                
-                // Cross Terminal Device Conflict Validation
-                const identityVerificationTopic = `discord/security/lockout/${appSettings.username}`;
-                mqttClient.subscribe(identityVerificationTopic);
-                mqttClient.publish(identityVerificationTopic, JSON.stringify({ activeToken: mySessionID }));
             });
 
             mqttClient.on('close', () => {
@@ -921,22 +916,14 @@
             mqttClient.on('message', (topic, message) => {
                 try {
                     const payload = JSON.parse(message.toString());
-                    
-                    if (topic === `discord/security/lockout/${appSettings.username}`) {
-                        if (payload.activeToken && payload.activeToken !== mySessionID) {
-                            alert("⚠️ Security Lockout: Account opened elsewhere.");
-                            handleLogout();
-                        }
-                        return;
-                    }
 
                     if (appSettings.blockedUsers && appSettings.blockedUsers.includes(payload.sender)) return; 
                     
                     if (payload.type === 'remote_wipe_command') {
-                        const cacheKey = payload.mode === 'servers' ? `server_${payload.target}` : `dm_${payload.sender}`;
+                        const cacheKey = payload.mode === 'servers' ? `server_${payload.target}` : `dm_${payload.target}`;
                         chatHistoryCache[cacheKey] = [];
                         saveCacheToLocalStorage();
-                        if ((currentMode === 'servers' && currentGroup === payload.target) || (currentMode === 'dms' && currentDM === payload.sender)) {
+                        if ((currentMode === 'servers' && currentGroup === payload.target) || (currentMode === 'dms' && currentDM === payload.target)) {
                             clearChatUI();
                         }
                         return;
@@ -1098,10 +1085,8 @@
             }
 
             if (mqttClient && mqttClient.connected) {
-                // Ensure immediate local channel allocation pre-subscription
                 mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(targetUser)}`, { qos: 1 });
                 
-                // CRITICAL FIX: Publish with retain = true so it stays stored on the broker server database
                 mqttClient.publish(`${appSettings.networkID}/inbox/${targetUser}`, JSON.stringify({
                     sender: appSettings.username,
                     type: 'friend_handshake'
@@ -1124,11 +1109,8 @@
 
             if (mqttClient) {
                 mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(senderName)}`, { qos: 1 });
-                
-                // Clear the incoming retained request payload now that we've accepted it
                 mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
                 
-                // Symmetrically let the sender know it was accepted via a retained response packet
                 mqttClient.publish(`${appSettings.networkID}/inbox/${senderName}`, JSON.stringify({
                     sender: appSettings.username,
                     type: 'friend_accepted'
@@ -1144,7 +1126,6 @@
             appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
             if (mqttClient) {
-                // Wipe the stored retained message out of broker memory space
                 mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
             }
             renderSidebars();
@@ -1311,8 +1292,12 @@
 
         function saveMessageToCache(cacheKey, sender, text, mediaUrl) {
             if (!chatHistoryCache[cacheKey]) chatHistoryCache[cacheKey] = [];
-            chatHistoryCache[cacheKey].push({ sender, text, mediaUrl });
-            saveCacheToLocalStorage();
+            // Prevent duplicate records
+            const matches = chatHistoryCache[cacheKey].filter(m => m.sender === sender && m.text === text && m.mediaUrl === mediaUrl);
+            if (matches.length === 0) {
+                chatHistoryCache[cacheKey].push({ sender, text, mediaUrl });
+                saveCacheToLocalStorage();
+            }
         }
 
         function handleIncomingMessage(topic, payload) {
@@ -1334,8 +1319,6 @@
                         appSettings.directMessages.push(payload.sender);
                         localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
                         if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`, { qos: 1 });
-                        
-                        // Clean out confirmation notification payload record
                         mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
                         renderSidebars();
                     }
@@ -1350,12 +1333,22 @@
                     appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                 }
             } else if (type === 'dms') {
-                if (target === getDMScope(payload.sender) || target === getDMScope(appSettings.username)) {
-                    const cacheKey = `dm_${payload.sender}`;
-                    // Avoid local doubling duplicates
-                    if (payload.sender !== appSettings.username) {
+                if (target === getDMScope(payload.sender) || target === getDMScope(currentDM)) {
+                    // CRITICAL DM CORRECTION: Extract cache index directly from the payload's real author context
+                    const dynamicPartnerKey = (payload.sender === appSettings.username) ? currentDM : payload.sender;
+                    
+                    if (dynamicPartnerKey) {
+                        // Symmetrically add to active DMs list automatically if missing
+                        if (!appSettings.directMessages.includes(dynamicPartnerKey)) {
+                            appSettings.directMessages.push(dynamicPartnerKey);
+                            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                            renderSidebars();
+                        }
+
+                        const cacheKey = `dm_${dynamicPartnerKey}`;
                         saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
-                        if (currentMode === 'dms' && currentDM === payload.sender) {
+                        
+                        if (currentMode === 'dms' && currentDM === dynamicPartnerKey) {
                             appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                         }
                     }
@@ -1384,7 +1377,7 @@
             } else {
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
                 // Save and render locally instantly to provide high performance zero-latency updates
-                saveMessageToCache(`dm_${currentDM}`, payload.username, payload.text, payload.mediaUrl);
+                saveMessageToCache(`dm_${currentDM}`, appSettings.username, payload.text, payload.mediaUrl);
                 appendMessageToDOM(appSettings.username, payload.text, payload.mediaUrl);
             }
 

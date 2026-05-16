@@ -156,6 +156,9 @@
             padding: 0 16px;
             font-weight: bold;
             font-size: 15px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .channel-list {
@@ -354,6 +357,22 @@
             outline: none;
         }
 
+        .no-chat-fallback {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 20px;
+        }
+
+        .no-chat-fallback h3 {
+            margin-bottom: 8px;
+            color: var(--text-normal);
+        }
+
         /* Settings View Overlay */
         .overlay {
             display: none;
@@ -489,16 +508,16 @@
     <div class="servers-bar">
         <div class="server-icon active" id="server-view-btn" onclick="switchView('servers')" title="Group Servers">💬</div>
         <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages">👤</div>
-        <div class="server-icon add-server-btn" onclick="promptCreateServer()" title="Create New Server Hub">+</div>
+        <div class="server-icon add-server-btn" onclick="promptCreateServer()" title="Create/Join Server Hub">+</div>
     </div>
 
     <div class="sidebar">
         <div>
-            <div class="sidebar-header" id="sidebar-header-title">Public Guild</div>
+            <div class="sidebar-header" id="sidebar-header-title">No Server Selected</div>
             <div class="channel-list">
                 <div class="section-title">
                     <span id="section-label">Channels</span>
-                    <span class="add-btn" onclick="createNewTarget()">+</span>
+                    <span class="add-btn" id="sidebar-add-target-btn" onclick="createNewTarget()">+</span>
                 </div>
                 <div id="channels-container">
                     </div>
@@ -514,7 +533,7 @@
         </div>
     </div>
 
-    <div class="chat-area">
+    <div class="chat-area" id="chat-area-pane" style="display: none;">
         <div class="chat-header">
             <div class="header-left">
                 <span id="chat-header-symbol">#</span>
@@ -528,6 +547,11 @@
             <button class="media-btn" onclick="promptAttachMedia()" title="Attach Image or GIF URL">📁</button>
             <input type="text" class="message-input" id="message-input" placeholder="Message..." autocomplete="off">
         </div>
+    </div>
+
+    <div class="no-chat-fallback" id="chat-area-fallback">
+        <h3 id="fallback-main-title">No Server Configured</h3>
+        <p id="fallback-sub-text">Click the green "+" button on the far left to construct or enter an invite code.</p>
     </div>
 
     <div class="overlay" id="settings-overlay">
@@ -568,8 +592,8 @@
                 
                 <div class="setting-group">
                     <label for="input-app-id">Active Server/Invite Code (Network ID)</label>
-                    <input type="text" id="input-app-id" placeholder="default-discord-clone" onchange="updateNetworkID()">
-                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Share this ID with friends to invite them into your custom server hub connection.</p>
+                    <input type="text" id="input-app-id" placeholder="Create or join a server to generate an ID" onchange="updateNetworkID()">
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Share this ID with friends to invite them into your custom server hub connection layout.</p>
                 </div>
 
                 <h2>Privacy (Block & Ignore)</h2>
@@ -589,22 +613,35 @@
     <script>
         // --- State Management ---
         let currentMode = 'servers'; 
-        let currentGroup = 'general';
+        let currentGroup = '';
         let currentDM = '';
         
         let appSettings = {
             username: '',
             theme: 'dark',
             fontSize: '16px',
-            networkID: 'discord_clone_global_room',
-            blockedUsers: []
+            networkID: '', // Starts completely blank now
+            blockedUsers: [],
+            groupChannels: [],
+            directMessages: []
         };
 
-        // Cache mapped object for storing message logs locally
+        // Live runtime cache
         let chatHistoryCache = {};
 
-        let groupChannels = ['general', 'gaming', 'memes'];
-        let directMessages = [];
+        // --- Persistent LocalStorage Loading & Saving ---
+        function saveCacheToLocalStorage() {
+            localStorage.setItem(`discord_history_${appSettings.networkID || 'global'}`, JSON.stringify(chatHistoryCache));
+        }
+
+        function loadCacheFromLocalStorage() {
+            const storedHistory = localStorage.getItem(`discord_history_${appSettings.networkID || 'global'}`);
+            if (storedHistory) {
+                chatHistoryCache = JSON.parse(storedHistory);
+            } else {
+                chatHistoryCache = {};
+            }
+        }
 
         // --- Authentication Pipeline ---
         function handleLogin() {
@@ -630,6 +667,12 @@
             const statusBadge = document.getElementById('net-status-badge');
             if(mqttClient) mqttClient.end();
             
+            if (!appSettings.networkID) {
+                statusBadge.innerText = "No Server Link";
+                statusBadge.style.backgroundColor = "var(--danger-color)";
+                return;
+            }
+            
             statusBadge.innerText = "Connecting...";
             statusBadge.style.backgroundColor = "var(--danger-color)";
 
@@ -639,8 +682,8 @@
                 statusBadge.innerText = "Connected";
                 statusBadge.style.backgroundColor = "var(--success-color)";
                 
-                groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
-                directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
+                appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
+                appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
                 
                 // Inbox handshake routing channel mapping
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
@@ -675,15 +718,46 @@
             const sym = document.getElementById('chat-header-symbol');
             const nameHeader = document.getElementById('chat-header-name');
             
+            const chatPane = document.getElementById('chat-area-pane');
+            const fallbackPane = document.getElementById('chat-area-fallback');
+
             container.innerHTML = '';
 
+            // Update configuration context layout fields
+            document.getElementById('input-app-id').value = appSettings.networkID;
+
             if (currentMode === 'servers') {
-                title.innerText = "Public Guild";
+                title.innerText = appSettings.networkID ? appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "Custom Hub" : "No Server Selected";
                 sectionLabel.innerText = "Text Channels";
                 sym.innerText = "#";
-                nameHeader.innerText = currentGroup;
+                
+                if (!appSettings.networkID) {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    document.getElementById('fallback-main-title').innerText = "No Server Hook Active";
+                    document.getElementById('fallback-sub-text').innerText = "Click the green '+' button on the far left column to generate or join an active network.";
+                    document.getElementById('sidebar-add-target-btn').style.display = 'none';
+                    return;
+                }
 
-                groupChannels.forEach(channel => {
+                document.getElementById('sidebar-add-target-btn').style.display = 'inline';
+
+                if (!currentGroup && appSettings.groupChannels.length > 0) {
+                    currentGroup = appSettings.groupChannels[0];
+                }
+
+                if (currentGroup) {
+                    chatPane.style.display = 'flex';
+                    fallbackPane.style.display = 'none';
+                    nameHeader.innerText = currentGroup;
+                } else {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    document.getElementById('fallback-main-title').innerText = "Empty Server Workspace";
+                    document.getElementById('fallback-sub-text').innerText = "This server layout has no text channels yet. Click the '+' next to Channels above to build one!";
+                }
+
+                appSettings.groupChannels.forEach(channel => {
                     const div = document.createElement('div');
                     div.className = `channel-item ${currentGroup === channel ? 'active' : ''}`;
                     div.innerHTML = `<span>#</span> ${channel}`;
@@ -692,11 +766,30 @@
                 });
             } else {
                 title.innerText = "Direct Messages";
-                sectionLabel.innerText = "Direct Messages";
+                sectionLabel.innerText = "Conversations";
                 sym.innerText = "@";
-                nameHeader.innerText = currentDM || "Select a friend";
+                document.getElementById('sidebar-add-target-btn').style.display = appSettings.networkID ? 'inline' : 'none';
 
-                directMessages.forEach(dm => {
+                if (!appSettings.networkID) {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    document.getElementById('fallback-main-title').innerText = "DMs Disableded";
+                    document.getElementById('fallback-sub-text').innerText = "You must configure or connect to a custom server environment hub first before sending direct messages.";
+                    return;
+                }
+
+                if (currentDM) {
+                    chatPane.style.display = 'flex';
+                    fallbackPane.style.display = 'none';
+                    nameHeader.innerText = currentDM;
+                } else {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    document.getElementById('fallback-main-title').innerText = "Direct Message Terminal";
+                    document.getElementById('fallback-sub-text').innerText = "Click the '+' button next to Conversations to start a private connection with an active user.";
+                }
+
+                appSettings.directMessages.forEach(dm => {
                     const div = document.createElement('div');
                     div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
                     div.innerHTML = `<span>👤</span> ${dm}`;
@@ -715,50 +808,64 @@
         }
 
         function createNewTarget() {
+            if (!appSettings.networkID) return;
             const label = currentMode === 'servers' ? 'Channel Name:' : 'User Profile Name:';
             const value = prompt(`Enter new ${label}`).replace(/\s+/g, '-').toLowerCase();
             if (!value) return;
 
             if (currentMode === 'servers') {
-                if (!groupChannels.includes(value)) {
-                    groupChannels.push(value);
-                    mqttClient.subscribe(`${appSettings.networkID}/servers/${value}`);
+                if (!appSettings.groupChannels.includes(value)) {
+                    appSettings.groupChannels.push(value);
+                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${value}`);
                     currentGroup = value;
                 }
             } else {
-                if (!directMessages.includes(value)) {
-                    directMessages.push(value);
-                    mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(value)}`);
+                if (!appSettings.directMessages.includes(value)) {
+                    appSettings.directMessages.push(value);
+                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(value)}`);
                     
                     const syncNotice = { sender: appSettings.username, type: 'handshake' };
-                    mqttClient.publish(`${appSettings.networkID}/inbox/${value}`, JSON.stringify(syncNotice));
+                    if (mqttClient) mqttClient.publish(`${appSettings.networkID}/inbox/${value}`, JSON.stringify(syncNotice));
                     
                     currentDM = value;
                 }
             }
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
             renderSidebars();
             loadActiveChatFromCache();
         }
 
         // --- Advanced Hub Invite Generation ---
         function promptCreateServer() {
-            const serverName = prompt("Enter a name for your new server hub:");
-            if (!serverName) return;
+            const option = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code to join one:").trim();
+            if (!option) return;
+
+            if (option.toUpperCase() === 'CREATE') {
+                const serverName = prompt("Enter a name for your new custom server hub:");
+                if (!serverName) return;
+                
+                const inviteCode = "server-" + Math.random().toString(36).substring(2, 9) + "-" + serverName.toLowerCase().replace(/\s+/g, '-');
+                appSettings.networkID = inviteCode;
+                appSettings.groupChannels = ['general', 'gaming'];
+                appSettings.directMessages = [];
+                currentGroup = 'general';
+                currentDM = '';
+            } else {
+                // Treated as entering a pre-existing custom server room string
+                appSettings.networkID = option;
+                appSettings.groupChannels = ['general']; // Fallback baseline channel to enter
+                appSettings.directMessages = [];
+                currentGroup = 'general';
+                currentDM = '';
+            }
             
-            // Generate clean unique alphanumeric invite key tag 
-            const inviteCode = "server-" + Math.random().toString(36).substring(2, 9) + "-" + serverName.toLowerCase().replace(/\s+/g, '-');
-            
-            appSettings.networkID = inviteCode;
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-            
-            // Reset to default starting channels inside the fresh clean instance environment scope
-            groupChannels = ['general', 'gaming', 'memes'];
-            currentGroup = 'general';
-            chatHistoryCache = {};
-            
+            loadCacheFromLocalStorage();
             completeStartup();
             
-            alert(`🎉 Server Generated!\n\nYour Invite Code is: ${inviteCode}\n\nWe have automatically loaded you into it. Give this code to friends so they can add it via their settings dashboard!`);
+            if (option.toUpperCase() === 'CREATE') {
+                alert(`🎉 Server Hook Created!\n\nYour Invite Code is:\n${appSettings.networkID}\n\nShare this invite text code with friends so they can input it into their client and connect!`);
+            }
         }
 
         // --- Privacy Processing ---
@@ -804,6 +911,7 @@
 
         function loadActiveChatFromCache() {
             clearChatUI();
+            if (!appSettings.networkID) return;
             const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
             if (chatHistoryCache[cacheKey]) {
                 chatHistoryCache[cacheKey].forEach(msg => {
@@ -814,6 +922,8 @@
 
         function appendMessageToDOM(author, text, mediaUrl) {
             const container = document.getElementById('messages-container');
+            if (!container) return;
+            
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
             
@@ -821,7 +931,7 @@
             
             let mediaElementHTML = '';
             if (mediaUrl) {
-                mediaElementHTML = `<img src="${escapeHTML(mediaUrl)}" class="chat-image" alt="User attachment image file" onerror="this.style.display='none';">`;
+                mediaElementHTML = `<img src="${escapeHTML(mediaUrl)}" class="chat-image" alt="User media attachment" onerror="this.style.display='none';">`;
             }
             
             msgDiv.innerHTML = `
@@ -841,6 +951,7 @@
                 chatHistoryCache[cacheKey] = [];
             }
             chatHistoryCache[cacheKey].push({ sender, text, mediaUrl });
+            saveCacheToLocalStorage();
         }
 
         function handleIncomingMessage(topic, payload) {
@@ -849,9 +960,10 @@
             const target = segments[2];
 
             if (type === 'inbox' && target === appSettings.username) {
-                if (payload.type === 'handshake' && !directMessages.includes(payload.sender)) {
-                    directMessages.push(payload.sender);
-                    mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`);
+                if (payload.type === 'handshake' && !appSettings.directMessages.includes(payload.sender)) {
+                    appSettings.directMessages.push(payload.sender);
+                    localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`);
                     renderSidebars();
                 }
                 return;
@@ -867,8 +979,9 @@
             } else if (type === 'dms') {
                 const combinedScope = getDMScope(payload.sender);
                 if (target === combinedScope) {
-                    if (!directMessages.includes(payload.sender)) {
-                        directMessages.push(payload.sender);
+                    if (!appSettings.directMessages.includes(payload.sender)) {
+                        appSettings.directMessages.push(payload.sender);
+                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
                         renderSidebars();
                     }
                     
@@ -883,12 +996,15 @@
         }
 
         function transmitMessage(forcedText = null, forcedMedia = null) {
+            if (!mqttClient || !appSettings.networkID) return;
+            
             const input = document.getElementById('message-input');
             const text = forcedText !== null ? forcedText : input.value.trim();
             const mediaUrl = forcedMedia;
             
             if (!text && !mediaUrl) return;
             if (currentMode === 'dms' && !currentDM) return;
+            if (currentMode === 'servers' && !currentGroup) return;
 
             const payload = {
                 sender: appSettings.username,
@@ -913,13 +1029,12 @@
         }
 
         function promptAttachMedia() {
-            if (currentMode === 'dms' && !currentDM) {
-                return alert("Please select a DM contact before attaching media.");
-            }
+            if (currentMode === 'dms' && !currentDM) return alert("Select a friend before sending images.");
+            if (currentMode === 'servers' && !currentGroup) return alert("Select a text channel before sending images.");
+            
             const url = prompt("Paste your Image or GIF address link here:\n(Example: https://site.com/image.gif)");
             if (!url) return;
             
-            // Fire off directly into the stream pipeline payload interface tracking routine
             transmitMessage("", url);
         }
 
@@ -944,8 +1059,10 @@
             if(netId) {
                 appSettings.networkID = netId;
                 localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                loadCacheFromLocalStorage();
                 initNetwork();
-                clearChatUI();
+                renderSidebars();
+                loadActiveChatFromCache();
             }
         }
 
@@ -1005,11 +1122,12 @@
             document.getElementById('user-name-display').innerText = appSettings.username;
             document.getElementById('select-theme').value = appSettings.theme;
             document.getElementById('input-font-size').value = appSettings.fontSize;
-            document.getElementById('input-app-id').value = appSettings.networkID;
 
             updateAccessibility();
+            loadCacheFromLocalStorage();
             initNetwork();
             renderSidebars();
+            loadActiveChatFromCache();
             renderBlockedList();
         }
 
@@ -1026,6 +1144,9 @@
             if (parsed.username) {
                 appSettings = parsed;
                 if(!appSettings.blockedUsers) appSettings.blockedUsers = [];
+                if(!appSettings.groupChannels) appSettings.groupChannels = [];
+                if(!appSettings.directMessages) appSettings.directMessages = [];
+                
                 document.getElementById('login-screen').style.display = 'none';
                 completeStartup();
             }

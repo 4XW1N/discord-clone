@@ -558,6 +558,9 @@
             blockedUsers: []
         };
 
+        // Local cache object to store history of groups and DMs during this live session
+        let chatHistoryCache = {};
+
         let groupChannels = ['general', 'gaming', 'memes'];
         let directMessages = [];
 
@@ -640,7 +643,7 @@
                     const div = document.createElement('div');
                     div.className = `channel-item ${currentGroup === channel ? 'active' : ''}`;
                     div.innerHTML = `<span>#</span> ${channel}`;
-                    div.onclick = () => { currentGroup = channel; renderSidebars(); clearChatUI(); };
+                    div.onclick = () => { currentGroup = channel; renderSidebars(); loadActiveChatFromCache(); };
                     container.appendChild(div);
                 });
             } else {
@@ -653,7 +656,7 @@
                     const div = document.createElement('div');
                     div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
                     div.innerHTML = `<span>👤</span> ${dm}`;
-                    div.onclick = () => { currentDM = dm; renderSidebars(); clearChatUI(); };
+                    div.onclick = () => { currentDM = dm; renderSidebars(); loadActiveChatFromCache(); };
                     container.appendChild(div);
                 });
             }
@@ -664,7 +667,7 @@
             document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
             document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
             renderSidebars();
-            clearChatUI();
+            loadActiveChatFromCache();
         }
 
         function createNewTarget() {
@@ -686,6 +689,7 @@
                 }
             }
             renderSidebars();
+            loadActiveChatFromCache();
         }
 
         // --- Privacy Processing ---
@@ -698,7 +702,7 @@
                 appSettings.blockedUsers.push(target);
                 localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
                 renderBlockedList();
-                clearChatUI();
+                loadActiveChatFromCache();
             }
             input.value = '';
         }
@@ -724,12 +728,23 @@
             });
         }
 
-        // --- Message Pipeline ---
+        // --- Cache and Message Pipeline ---
         function clearChatUI() {
             document.getElementById('messages-container').innerHTML = '';
         }
 
-        function appendMessageUI(author, text) {
+        // Safely loads chat history out of temporary system cache
+        function loadActiveChatFromCache() {
+            clearChatUI();
+            const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
+            if (chatHistoryCache[cacheKey]) {
+                chatHistoryCache[cacheKey].forEach(msg => {
+                    appendMessageToDOM(msg.sender, msg.text);
+                });
+            }
+        }
+
+        function appendMessageToDOM(author, text) {
             const container = document.getElementById('messages-container');
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
@@ -747,13 +762,25 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        function saveMessageToCache(cacheKey, sender, text) {
+            if (!chatHistoryCache[cacheKey]) {
+                chatHistoryCache[cacheKey] = [];
+            }
+            chatHistoryCache[cacheKey].push({ sender, text });
+        }
+
         function handleIncomingMessage(topic, payload) {
             const segments = topic.split('/');
             const type = segments[1]; 
             const target = segments[2];
 
-            if (currentMode === 'servers' && type === 'servers' && target === currentGroup) {
-                appendMessageUI(payload.sender, payload.text);
+            if (type === 'servers') {
+                const cacheKey = `server_${target}`;
+                saveMessageToCache(cacheKey, payload.sender, payload.text);
+                
+                if (currentMode === 'servers' && target === currentGroup) {
+                    appendMessageToDOM(payload.sender, payload.text);
+                }
             } else if (type === 'dms') {
                 const combinedScope = getDMScope(payload.sender);
                 if (target === combinedScope) {
@@ -761,8 +788,12 @@
                         directMessages.push(payload.sender);
                         renderSidebars();
                     }
+                    
+                    const cacheKey = `dm_${payload.sender}`;
+                    saveMessageToCache(cacheKey, payload.sender, payload.text);
+                    
                     if (currentMode === 'dms' && currentDM === payload.sender) {
-                        appendMessageUI(payload.sender, payload.text);
+                        appendMessageToDOM(payload.sender, payload.text);
                     }
                 }
             }
@@ -784,7 +815,11 @@
                 destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
             } else {
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
-                appendMessageUI(payload.sender, payload.text);
+                
+                // Track own sent DM message into local memory
+                const cacheKey = `dm_${currentDM}`;
+                saveMessageToCache(cacheKey, payload.sender, payload.text);
+                appendMessageToDOM(payload.sender, payload.text);
             }
 
             mqttClient.publish(destinationTopic, JSON.stringify(payload));

@@ -558,7 +558,7 @@
             blockedUsers: []
         };
 
-        // Local cache object to store history of groups and DMs during this live session
+        // Session data history object cache mapping
         let chatHistoryCache = {};
 
         let groupChannels = ['general', 'gaming', 'memes'];
@@ -599,7 +599,9 @@
                 
                 groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
-                mqttClient.subscribe(`${appSettings.networkID}/dms/+`);
+                
+                // Global personal inbox listener channel to catch incoming handshakes/invites from other users
+                mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
             });
 
             mqttClient.on('error', (err) => {
@@ -684,7 +686,14 @@
             } else {
                 if (!directMessages.includes(value)) {
                     directMessages.push(value);
+                    
+                    // 1. Instantly subscribe to the new DM pipeline scope locally
                     mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(value)}`);
+                    
+                    // 2. Transmit an internal handshake notification to the remote peer's inbox
+                    const syncNotice = { sender: appSettings.username, type: 'handshake' };
+                    mqttClient.publish(`${appSettings.networkID}/inbox/${value}`, JSON.stringify(syncNotice));
+                    
                     currentDM = value;
                 }
             }
@@ -733,7 +742,6 @@
             document.getElementById('messages-container').innerHTML = '';
         }
 
-        // Safely loads chat history out of temporary system cache
         function loadActiveChatFromCache() {
             clearChatUI();
             const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
@@ -773,6 +781,16 @@
             const segments = topic.split('/');
             const type = segments[1]; 
             const target = segments[2];
+
+            // Handle incoming handshakes/invites from other users
+            if (type === 'inbox' && target === appSettings.username) {
+                if (payload.type === 'handshake' && !directMessages.includes(payload.sender)) {
+                    directMessages.push(payload.sender);
+                    mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`);
+                    renderSidebars();
+                }
+                return;
+            }
 
             if (type === 'servers') {
                 const cacheKey = `server_${target}`;
@@ -816,7 +834,6 @@
             } else {
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
                 
-                // Track own sent DM message into local memory
                 const cacheKey = `dm_${currentDM}`;
                 saveMessageToCache(cacheKey, payload.sender, payload.text);
                 appendMessageToDOM(payload.sender, payload.text);

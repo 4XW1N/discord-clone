@@ -663,19 +663,25 @@
             if(mqttClient) mqttClient.end();
             
             if (!appSettings.networkID) {
-                statusBadge.innerText = "No Server Link";
-                statusBadge.style.backgroundColor = "var(--danger-color)";
+                if (statusBadge) {
+                    statusBadge.innerText = "No Server Link";
+                    statusBadge.style.backgroundColor = "var(--danger-color)";
+                }
                 return;
             }
             
-            statusBadge.innerText = "Connecting...";
-            statusBadge.style.backgroundColor = "var(--danger-color)";
+            if (statusBadge) {
+                statusBadge.innerText = "Connecting...";
+                statusBadge.style.backgroundColor = "var(--danger-color)";
+            }
 
             mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
             mqttClient.on('connect', () => {
-                statusBadge.innerText = "Connected";
-                statusBadge.style.backgroundColor = "var(--success-color)";
+                if (statusBadge) {
+                    statusBadge.innerText = "Connected";
+                    statusBadge.style.backgroundColor = "var(--success-color)";
+                }
                 
                 appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
@@ -684,8 +690,10 @@
 
             mqttClient.on('error', (err) => {
                 console.error("Network interface error:", err);
-                statusBadge.innerText = "Error Connecting";
-                statusBadge.style.backgroundColor = "var(--danger-color)";
+                if (statusBadge) {
+                    statusBadge.innerText = "Error Connecting";
+                    statusBadge.style.backgroundColor = "var(--danger-color)";
+                }
             });
 
             mqttClient.on('message', (topic, message) => {
@@ -715,7 +723,9 @@
             const fallbackPane = document.getElementById('chat-area-fallback');
 
             container.innerHTML = '';
-            document.getElementById('input-app-id').value = appSettings.networkID;
+            
+            const appIdInput = document.getElementById('input-app-id');
+            if (appIdInput) appIdInput.value = appSettings.networkID;
 
             if (currentMode === 'servers') {
                 sectionLabel.innerText = "Text Channels";
@@ -732,7 +742,7 @@
                     return;
                 }
 
-                // Process dynamic name out of HTML attributes
+                // Extrapolate name details safely out of metadata string attributes
                 const cleanName = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "CUSTOM HUB";
                 titleElement.innerText = cleanName;
                 titleElement.setAttribute('data-server-display', cleanName);
@@ -808,7 +818,6 @@
         function createNewTarget() {
             if (!appSettings.networkID) return;
             
-            // Explicitly requests structural data parameters based on active context layout
             const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Username of the person you want to invite:';
             const value = prompt(`Enter ${promptLabel}`);
             if (!value) return;
@@ -892,6 +901,7 @@
 
         function renderBlockedList() {
             const listContainer = document.getElementById('blocked-list-ui');
+            if (!listContainer) return;
             listContainer.innerHTML = '';
             if(appSettings.blockedUsers.length === 0) {
                 listContainer.innerHTML = `<p style="font-size:13px; color:var(--text-muted); padding: 4px;">No users currently blocked.</p>`;
@@ -907,7 +917,8 @@
 
         // --- Cache and Message Pipeline ---
         function clearChatUI() {
-            document.getElementById('messages-container').innerHTML = '';
+            const container = document.getElementById('messages-container');
+            if (container) container.innerHTML = '';
         }
 
         function loadActiveChatFromCache() {
@@ -928,7 +939,7 @@
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
             
-            const initials = author.substring(0, 2).toUpperCase();
+            const initials = author ? author.substring(0, 2).toUpperCase() : "??";
             
             let mediaElementHTML = '';
             if (mediaUrl) {
@@ -936,9 +947,9 @@
             }
             
             msgDiv.innerHTML = `
-                <div class="avatar" style="background-color: ${stringToColor(author)}">${initials}</div>
+                <div class="avatar" style="background-color: ${stringToColor(author || 'unknown')}">${initials}</div>
                 <div class="message-content">
-                    <div class="message-author">${author}</div>
+                    <div class="message-author">${author || 'Unknown'}</div>
                     ${text ? `<div class="message-text">${escapeHTML(text)}</div>` : ''}
                     ${mediaElementHTML}
                 </div>
@@ -1026,7 +1037,7 @@
             }
 
             mqttClient.publish(destinationTopic, JSON.stringify(payload));
-            if (forcedText === null) input.value = '';
+            if (forcedText === null && input) input.value = '';
         }
 
         function promptAttachMedia() {

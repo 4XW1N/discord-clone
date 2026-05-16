@@ -665,7 +665,7 @@
 
     <div class="servers-bar">
         <div class="server-icon active" id="server-view-btn" onclick="switchView('servers')" title="Group Servers">💬</div>
-        <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages">👤</div>
+        <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages / Friends">👤</div>
         <div class="server-icon add-server-btn" onclick="promptCreateServer()" title="Create/Join Server Hub">+</div>
         <div class="server-icon server-settings-btn" onclick="toggleSettings(true)" title="App Settings">⚙️</div>
     </div>
@@ -876,6 +876,7 @@
                     appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
                 }
                 
+                // Subscribe to personal inbox for friend requests and real-time pairing invitations
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
                 
                 // Assert exclusive single terminal device rule check
@@ -981,8 +982,8 @@
                     container.appendChild(div);
                 });
             } else {
-                titleElement.innerText = "Direct Messages";
-                sectionLabel.innerText = "Conversations";
+                titleElement.innerText = "Friends & DMs";
+                sectionLabel.innerText = "Friends List";
                 if(sym) sym.innerText = "@";
                 document.getElementById('sidebar-add-target-btn').style.display = appSettings.networkID ? 'inline' : 'none';
 
@@ -1006,7 +1007,7 @@
                     div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
                     div.innerHTML = `
                         <div><span>👤</span>${dm}</div>
-                        <span class="remove-dm-btn" title="Remove Conversation">&times;</span>
+                        <span class="remove-dm-btn" title="Remove Friend Thread">&times;</span>
                     `;
                     
                     div.onclick = () => { 
@@ -1027,7 +1028,7 @@
         }
 
         function removeDirectMessageContext(targetDM) {
-            if(confirm(`Close chat workspace context view for ${targetDM}?`)) {
+            if(confirm(`Remove ${targetDM} from your active chat listings?`)) {
                 appSettings.directMessages = appSettings.directMessages.filter(user => user !== targetDM);
                 localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
                 if(currentDM === targetDM) currentDM = '';
@@ -1072,7 +1073,7 @@
 
         function createNewTarget() {
             if (!appSettings.networkID) return;
-            const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Username to link chat:';
+            const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Friend\'s exact username:';
             const value = prompt(`Enter ${promptLabel}`);
             if (!value) return;
             
@@ -1086,10 +1087,19 @@
                     currentGroup = cleanValue;
                 }
             } else {
+                // Friend pairing layout setup
                 if (!appSettings.directMessages.includes(cleanValue)) {
                     appSettings.directMessages.push(cleanValue);
-                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(cleanValue)}`);
-                    if (mqttClient) mqttClient.publish(`${appSettings.networkID}/inbox/${cleanValue}`, JSON.stringify({ sender: appSettings.username, type: 'handshake' }));
+                    
+                    // Subscribe immediately to the pairing pipeline channel
+                    if (mqttClient) {
+                        mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(cleanValue)}`);
+                        // Ping the friend's secure inbox path so their application syncs and registers you back automatically
+                        mqttClient.publish(`${appSettings.networkID}/inbox/${cleanValue}`, JSON.stringify({ 
+                            sender: appSettings.username, 
+                            type: 'handshake' 
+                        }));
+                    }
                     currentDM = cleanValue;
                 }
             }
@@ -1206,10 +1216,13 @@
             const type = segments[1]; 
             const target = segments[2];
 
+            // Inbox Handshake Pairing Engine Logic
             if (type === 'inbox' && target === appSettings.username) {
                 if (payload.type === 'handshake' && !appSettings.directMessages.includes(payload.sender)) {
                     appSettings.directMessages.push(payload.sender);
                     localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                    
+                    // Automatically bind subscription tracking to the matching key path token
                     if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`);
                     renderSidebars();
                 }
@@ -1329,7 +1342,6 @@
             return `hsl(${Math.abs(hash % 360)}, 65%, 45%)`;
         }
 
-        // Simple input validation check filter
         function escapeHTML(str) {
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }

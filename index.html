@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Discord Lite</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
@@ -26,12 +26,16 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-primary);
+        }
+
         body {
             display: flex;
-            height: 100vh;
-            background-color: var(--bg-primary);
             color: var(--text-normal);
-            overflow: hidden;
             position: relative;
         }
 
@@ -40,8 +44,8 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             background-color: #1e1f22;
             z-index: 1000;
             display: flex;
@@ -93,19 +97,20 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s;
         }
 
         /* Server/Nav Column */
         .servers-bar {
             width: 72px;
+            height: 100%;
             background-color: var(--bg-servers);
             display: flex;
             flex-direction: column;
             align-items: center;
             padding-top: 12px;
             gap: 8px;
-            z-index: 20; /* Fixed layer stacking hierarchy */
+            z-index: 30;
+            flex-shrink: 0;
         }
 
         .server-icon {
@@ -142,11 +147,13 @@
         /* Channels/DMs Sidebar */
         .sidebar {
             width: 240px;
+            height: 100%;
             background-color: var(--bg-sidebar);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            z-index: 15; /* Ensures sidebar panels layout sits correctly */
+            z-index: 25;
+            flex-shrink: 0;
         }
 
         .sidebar-header {
@@ -195,7 +202,7 @@
             margin-bottom: 4px;
             color: var(--text-muted);
             font-size: 15px;
-            min-height: 44px; /* Touch target standard */
+            min-height: 44px;
         }
 
         .channel-item:hover, .channel-item.active {
@@ -215,8 +222,6 @@
             align-items: center;
             padding: 0 12px;
             justify-content: space-between;
-            position: relative;
-            z-index: 30; /* Stays above sliding view containers */
         }
 
         .user-info {
@@ -243,7 +248,6 @@
         .username-display {
             font-size: 14px;
             font-weight: 600;
-            max-width: 110px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -263,13 +267,20 @@
             justify-content: center;
         }
 
+        /* Mobile specific top-header actions container */
+        .mobile-actions {
+            display: none;
+            align-items: center;
+            gap: 4px;
+        }
+
         /* Main Chat Area */
         .chat-area {
             flex: 1;
             display: flex;
             flex-direction: column;
             background-color: var(--bg-primary);
-            width: 100%;
+            height: 100%;
             min-width: 0;
         }
 
@@ -281,6 +292,7 @@
             justify-content: space-between;
             padding: 0 16px;
             font-weight: bold;
+            flex-shrink: 0;
         }
 
         .header-left {
@@ -297,10 +309,11 @@
             color: var(--text-normal);
             font-size: 22px;
             cursor: pointer;
-            margin-right: 8px;
             padding: 8px;
             min-height: 44px;
             min-width: 44px;
+            align-items: center;
+            justify-content: center;
         }
 
         .network-status {
@@ -359,6 +372,8 @@
             display: flex;
             gap: 12px;
             align-items: center;
+            background-color: var(--bg-primary);
+            flex-shrink: 0;
         }
 
         .media-btn {
@@ -366,15 +381,18 @@
             border: none;
             color: var(--text-muted);
             font-size: 20px;
-            padding: 12px 14px;
+            padding: 0 14px;
             border-radius: 8px;
             cursor: pointer;
             min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .message-input {
             flex: 1;
-            padding: 14px;
+            padding: 0 14px;
             border-radius: 8px;
             border: none;
             background-color: var(--input-bg);
@@ -393,6 +411,7 @@
             color: var(--text-muted);
             text-align: center;
             padding: 20px;
+            height: 100%;
         }
 
         .no-chat-fallback h3 {
@@ -406,11 +425,11 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             background-color: var(--bg-primary);
-            z-index: 500; /* Must overlay mobile bars securely */
-            padding: 40px 20px;
+            z-index: 500;
+            padding: 60px 20px 20px 20px;
             overflow-y: auto;
         }
 
@@ -462,6 +481,7 @@
             border-radius: 4px;
             color: var(--text-normal);
             font-size: 15px;
+            outline: none;
         }
 
         .privacy-flex {
@@ -510,8 +530,8 @@
 
         .close-settings {
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 16px;
+            right: 16px;
             background-color: transparent;
             border: 2px solid var(--text-muted);
             color: var(--text-muted);
@@ -522,29 +542,37 @@
             z-index: 550;
         }
 
-        /* Mobile Backdrop Overlay */
+        /* Mobile Layout Overlay Mask */
         .mobile-sidebar-backdrop {
             display: none;
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             background: rgba(0, 0, 0, 0.6);
             z-index: 10;
         }
 
-        /* Mobile Layout Viewport Breakpoint rules */
+        /* Pure Fullscreen Responsive Configurations for Mobile Viewports */
         @media (max-width: 767px) {
             .mobile-nav-toggle {
-                display: inline-block;
+                display: flex;
+            }
+
+            .mobile-actions {
+                display: flex;
+            }
+
+            /* Hide desktop profile bar footer gear item */
+            .user-footer .settings-btn {
+                display: none;
             }
 
             .servers-bar {
                 position: fixed;
                 top: 0;
                 left: -72px;
-                height: 100vh;
                 transition: left 0.25s ease-out;
             }
 
@@ -552,7 +580,6 @@
                 position: fixed;
                 top: 0;
                 left: -312px; 
-                height: 100vh;
                 transition: left 0.25s ease-out;
             }
 
@@ -567,9 +594,14 @@
             body.nav-open .mobile-sidebar-backdrop {
                 display: block;
             }
+
+            .chat-area, .no-chat-fallback {
+                width: 100%;
+                flex: none;
+            }
             
             .network-status {
-                max-width: 95px;
+                max-width: 90px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -598,7 +630,7 @@
 
     <div class="sidebar">
         <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-            <div class="sidebar-header" id="sidebar-header-title" data-server-display="No Server Selected">No Server Selected</div>
+            <div class="sidebar-header" id="sidebar-header-title">No Server Selected</div>
             <div class="channel-list">
                 <div class="section-title">
                     <span id="section-label">Channels</span>
@@ -621,7 +653,10 @@
     <div class="chat-area" id="chat-area-pane" style="display: none;">
         <div class="chat-header">
             <div class="header-left">
-                <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" aria-label="Open Navigation">☰</button>
+                <div class="mobile-actions">
+                    <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" aria-label="Open Navigation">☰</button>
+                    <button class="mobile-nav-toggle" onclick="toggleSettings(true)" aria-label="Settings Mobile">⚙️</button>
+                </div>
                 <span id="chat-header-symbol">#</span>
                 <span id="chat-header-name">general</span>
             </div>
@@ -636,11 +671,12 @@
     </div>
 
     <div class="no-chat-fallback" id="chat-area-fallback">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-            <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: block; margin: 0;">☰ Menu</button>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">☰ Open Menu</button>
+            <button class="mobile-nav-toggle" onclick="toggleSettings(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">⚙️ Settings</button>
         </div>
         <h3 id="fallback-main-title">No Server Configured</h3>
-        <p id="fallback-sub-text">Click the green "+" button on the far left or open the menu drawer to build/join an environment link.</p>
+        <p id="fallback-sub-text">Open the menu layout drawer to build or configure your active network link environment.</p>
     </div>
 
     <div class="overlay" id="settings-overlay">
@@ -764,7 +800,7 @@
             
             if (!appSettings.networkID) {
                 if (statusBadge) {
-                    statusBadge.innerText = "No Server Link";
+                    statusBadge.innerText = "No Link";
                     statusBadge.style.backgroundColor = "var(--danger-color)";
                 }
                 return;
@@ -775,7 +811,6 @@
                 statusBadge.style.backgroundColor = "var(--danger-color)";
             }
 
-            // Enhanced connection flags to prevent dropped packets on dynamic networks
             mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
                 keepalive: 30,
                 reconnectPeriod: 1000,
@@ -789,7 +824,6 @@
                     statusBadge.style.backgroundColor = "var(--success-color)";
                 }
                 
-                // Resubscribe cleanly to core topics
                 if (appSettings.groupChannels) {
                     appSettings.groupChannels.forEach(ch => {
                         mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`);
@@ -1179,7 +1213,6 @@
             if(open) toggleMobileNav(false);
         }
 
-        // Corrects profile binding & fires an active client connection reset instantly
         function updateProfile() {
             const newName = document.getElementById('input-username').value.trim().replace(/\s+/g, '-');
             if(newName) {

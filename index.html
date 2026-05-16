@@ -144,6 +144,19 @@
             color: white !important;
         }
 
+        /* Settings Icon directly underneath the Plus Key */
+        .server-settings-btn {
+            background-color: #2b2d31;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        
+        .server-settings-btn:hover {
+            background-color: #404249;
+            color: white;
+            border-radius: 30%;
+        }
+
         /* Channels/DMs Sidebar */
         .sidebar {
             width: 240px;
@@ -221,7 +234,6 @@
             display: flex;
             align-items: center;
             padding: 0 12px;
-            justify-content: space-between;
         }
 
         .user-info {
@@ -251,27 +263,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-        }
-
-        .settings-btn {
-            cursor: pointer;
-            background: none;
-            border: none;
-            color: var(--text-normal);
-            font-size: 22px;
-            padding: 8px;
-            min-height: 44px;
-            min-width: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        /* Mobile specific top-header actions container */
-        .mobile-actions {
-            display: none;
-            align-items: center;
-            gap: 4px;
         }
 
         /* Main Chat Area */
@@ -554,50 +545,53 @@
             z-index: 10;
         }
 
-        /* Pure Fullscreen Responsive Configurations for Mobile Viewports */
+        /* Pure Fullscreen Responsive Split-Layout for Mobile Viewports */
         @media (max-width: 767px) {
             .mobile-nav-toggle {
                 display: flex;
             }
 
-            .mobile-actions {
-                display: flex;
-            }
-
-            /* Hide desktop profile bar footer gear item */
-            .user-footer .settings-btn {
-                display: none;
-            }
-
+            /* Split layout: Menu stays docked open on left, Chat stays open on right! */
             .servers-bar {
                 position: fixed;
                 top: 0;
-                left: -72px;
-                transition: left 0.25s ease-out;
+                left: 0;
+                height: 100%;
+                box-shadow: 2px 0 5px rgba(0,0,0,0.2);
             }
 
             .sidebar {
                 position: fixed;
                 top: 0;
-                left: -312px; 
-                transition: left 0.25s ease-out;
+                left: 72px; 
+                width: calc(100% - 72px);
+                height: 100%;
+                transition: transform 0.25s ease-out;
+                transform: translateX(0);
             }
 
-            body.nav-open .servers-bar {
-                left: 0;
+            /* When user closes menu, hide the navigation column sidebar safely */
+            body.nav-closed .sidebar {
+                transform: translateX(-100%);
+                pointer-events: none;
             }
-
-            body.nav-open .sidebar {
-                left: 72px;
+            body.nav-closed .mobile-sidebar-backdrop {
+                display: none;
             }
-
             body.nav-open .mobile-sidebar-backdrop {
                 display: block;
+                left: 72px;
+                width: calc(100% - 72px);
             }
 
+            /* Chat window is pinned to full width on the right, always layered cleanly */
             .chat-area, .no-chat-fallback {
-                width: 100%;
-                flex: none;
+                position: absolute;
+                top: 0;
+                left: 72px;
+                width: calc(100% - 72px);
+                height: 100%;
+                z-index: 5;
             }
             
             .network-status {
@@ -609,9 +603,7 @@
         }
     </style>
 </head>
-<body>
-
-    <div class="mobile-sidebar-backdrop" onclick="toggleMobileNav(false)"></div>
+<body class="nav-closed"> <div class="mobile-sidebar-backdrop" onclick="toggleMobileNav(false)"></div>
 
     <div id="login-screen">
         <div class="login-box">
@@ -626,6 +618,7 @@
         <div class="server-icon active" id="server-view-btn" onclick="switchView('servers')" title="Group Servers">💬</div>
         <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages">👤</div>
         <div class="server-icon add-server-btn" onclick="promptCreateServer()" title="Create/Join Server Hub">+</div>
+        <div class="server-icon server-settings-btn" onclick="toggleSettings(true)" title="App Settings">⚙️</div>
     </div>
 
     <div class="sidebar">
@@ -646,17 +639,13 @@
                 <div class="avatar" id="user-avatar">U</div>
                 <div class="username-display" id="user-name-display">Username</div>
             </div>
-            <button class="settings-btn" onclick="toggleSettings(true)" aria-label="Settings">⚙️</button>
         </div>
     </div>
 
     <div class="chat-area" id="chat-area-pane" style="display: none;">
         <div class="chat-header">
             <div class="header-left">
-                <div class="mobile-actions">
-                    <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" aria-label="Open Navigation">☰</button>
-                    <button class="mobile-nav-toggle" onclick="toggleSettings(true)" aria-label="Settings Mobile">⚙️</button>
-                </div>
+                <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" aria-label="Open Navigation">☰ Channels</button>
                 <span id="chat-header-symbol">#</span>
                 <span id="chat-header-name">general</span>
             </div>
@@ -672,11 +661,10 @@
 
     <div class="no-chat-fallback" id="chat-area-fallback">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-            <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">☰ Open Menu</button>
-            <button class="mobile-nav-toggle" onclick="toggleSettings(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">⚙️ Settings</button>
+            <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">☰ Open Channels List</button>
         </div>
         <h3 id="fallback-main-title">No Server Configured</h3>
-        <p id="fallback-sub-text">Open the menu layout drawer to build or configure your active network link environment.</p>
+        <p id="fallback-sub-text">Tap the green "+" icon on the left bar or use the menu drawer to hook a custom server layout channel.</p>
     </div>
 
     <div class="overlay" id="settings-overlay">
@@ -753,12 +741,14 @@
 
         let chatHistoryCache = {};
 
-        // --- Mobile Specific Controller Handles ---
+        // --- Mobile Specific Split-Layout Mechanics ---
         function toggleMobileNav(isOpen) {
             if (isOpen) {
+                document.body.classList.remove('nav-closed');
                 document.body.classList.add('nav-open');
             } else {
                 document.body.classList.remove('nav-open');
+                document.body.classList.add('nav-closed');
             }
         }
 
@@ -885,7 +875,7 @@
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     document.getElementById('fallback-main-title').innerText = "No Server Hook Active";
-                    document.getElementById('fallback-sub-text').innerText = "Open the menu drawer to build or input an environment network.";
+                    document.getElementById('fallback-sub-text').innerText = "Click the '+' button on the left bar to build or enter a network id link.";
                     document.getElementById('sidebar-add-target-btn').style.display = 'none';
                     return;
                 }
@@ -966,6 +956,11 @@
             currentMode = mode;
             document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
             document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
+            
+            // Auto open the channel sliding drawer context when swapping modes
+            if (window.innerWidth <= 767) {
+                toggleMobileNav(true);
+            }
             renderSidebars();
             loadActiveChatFromCache();
         }

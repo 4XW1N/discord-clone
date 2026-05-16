@@ -193,7 +193,7 @@
             text-transform: uppercase;
             font-weight: bold;
             color: var(--text-muted);
-            margin: 16px 0 6px 8px;
+            margin: 14px 0 6px 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -201,7 +201,7 @@
         }
 
         .add-friend-action-btn {
-            background-color: var(--success-color);
+            background-color: var(--brand-color);
             color: white;
             font-size: 11px;
             padding: 3px 8px;
@@ -209,7 +209,6 @@
             cursor: pointer;
             border: none;
             font-weight: bold;
-            text-transform: none;
             transition: opacity 0.2s;
         }
 
@@ -227,6 +226,42 @@
         .add-channel-action-btn:hover {
             color: var(--text-normal);
         }
+
+        /* Friend Request Item Blocks */
+        .request-item {
+            background-color: #1e1f22;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .request-user {
+            font-weight: bold;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-bottom: 4px;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .req-btn {
+            flex: 1;
+            border: none;
+            padding: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 3px;
+            cursor: pointer;
+            color: white;
+        }
+
+        .req-accept { background-color: var(--success-color); }
+        .req-deny { background-color: var(--danger-color); }
 
         .channel-item {
             padding: 10px 12px;
@@ -699,6 +734,10 @@
             <div class="channel-list">
                 <div class="section-title" id="sidebar-section-container">
                     </div>
+                
+                <div id="friend-requests-container" style="display: none; margin-bottom: 12px; border-bottom: 1px solid #1f2023; padding-bottom: 8px;">
+                    </div>
+
                 <div id="channels-container">
                     </div>
             </div>
@@ -809,7 +848,8 @@
             networkID: '', 
             blockedUsers: [],
             groupChannels: [],
-            directMessages: []
+            directMessages: [],
+            pendingRequests: [] // Tracks inbound user requests
         };
 
         let chatHistoryCache = {};
@@ -833,7 +873,6 @@
             chatHistoryCache = storedHistory ? JSON.parse(storedHistory) : {};
         }
 
-        // --- Custom Authentication Engine Pipeline ---
         function handleLogin() {
             const nameInput = document.getElementById('login-username').value.trim().replace(/\s+/g, '-').toLowerCase();
             const passInput = document.getElementById('login-password').value.trim();
@@ -841,7 +880,7 @@
             if (!nameInput || !passInput) return alert('Provide credentials to initialize session link.');
 
             appSettings.username = nameInput;
-            appSettings.passwordHash = btoa(passInput); // Obfuscate password representation
+            appSettings.passwordHash = btoa(passInput); 
             
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
             document.getElementById('login-screen').style.display = 'none';
@@ -875,7 +914,6 @@
                 statusBadge.style.backgroundColor = "var(--danger-color)";
             }
 
-            // Hook safely into public broker wss port
             mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
                 keepalive: 15,
                 reconnectPeriod: 1500,
@@ -889,15 +927,16 @@
                     statusBadge.style.backgroundColor = "var(--success-color)";
                 }
                 
-                // Active configuration channel subscription mapping setup
+                // Subscribe to server channels
                 if (appSettings.groupChannels) {
                     appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 }
+                // Subscribe to direct message channels
                 if (appSettings.directMessages) {
                     appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
                 }
                 
-                // Subscribe to personal inbox for friend requests and real-time pairing invitations
+                // IMPORTANT: Subscribe to account's inbox for handshakes and friend synchronization
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
                 
                 // Assert exclusive single terminal device rule check
@@ -919,7 +958,7 @@
                     
                     if (topic === `discord/security/lockout/${appSettings.username}`) {
                         if (payload.activeToken && payload.activeToken !== mySessionID) {
-                            alert("⚠️ Security Lockout: This account logged in from another tab or mobile device. Closing local window stream context.");
+                            alert("⚠️ Security Lockout: Account opened elsewhere.");
                             handleLogout();
                         }
                         return;
@@ -939,21 +978,21 @@
 
                     handleIncomingMessage(topic, payload);
                 } catch (e) {
-                    console.error("Payload tracing processing failure:", e);
+                    console.error("Payload execution error:", e);
                 }
             });
         }
 
+        // Standardized across endpoints so users resolve to the same channel name regardless of who logs in first
         function getDMScope(targetUser) {
-            // Salt secure workspace hashes using your client secret password hash so nobody can guess your DM streams
-            const secureSalt = appSettings.passwordHash ? appSettings.passwordHash.substring(0, 8) : "default";
-            const combinedString = [appSettings.username, targetUser].sort().join("_and_");
-            return combinedString + "_" + secureSalt;
+            const combinedString = [appSettings.username, targetUser].sort().join("_to_");
+            return combinedString;
         }
 
         // --- View & Sidebar Sync Logic Rendering ---
         function renderSidebars() {
             const container = document.getElementById('channels-container');
+            const requestsContainer = document.getElementById('friend-requests-container');
             const titleElement = document.getElementById('sidebar-header-title');
             const sectionContainer = document.getElementById('sidebar-section-container');
             const sym = document.getElementById('chat-header-symbol');
@@ -962,17 +1001,18 @@
             const fallbackPane = document.getElementById('chat-area-fallback');
 
             container.innerHTML = '';
+            requestsContainer.innerHTML = '';
+            
             if (document.getElementById('input-app-id')) document.getElementById('input-app-id').value = appSettings.networkID;
 
             if (currentMode === 'servers') {
-                // Header display setting for server view channel creations
+                requestsContainer.style.display = 'none';
                 sectionContainer.innerHTML = `
                     <span>Text Channels</span>
-                    <span class="add-channel-action-btn" onclick="createNewTarget()">+</span>
+                    <span class="add-channel-action-btn" onclick="createNewChannel()">+</span>
                 `;
                 
                 if(sym) sym.innerText = "#";
-                
                 if (!appSettings.networkID) {
                     titleElement.innerText = "No Server Selected";
                     chatPane.style.display = 'none';
@@ -1007,21 +1047,46 @@
                     container.appendChild(div);
                 });
             } else {
-                // Explicitly show the interactive friend-making button
+                // Direct Messages / Friend Layout Panel
                 titleElement.innerText = "Friends & DMs";
                 if(sym) sym.innerText = "@";
 
                 if (!appSettings.networkID) {
                     sectionContainer.innerHTML = '<span>Friends List</span>';
+                    requestsContainer.style.display = 'none';
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     return;
                 }
 
                 sectionContainer.innerHTML = `
-                    <span>Friends List</span>
-                    <button class="add-friend-action-btn" onclick="createNewTarget()">➕ Add Friend</button>
+                    <span>Direct Messages</span>
+                    <button class="add-friend-action-btn" onclick="sendFriendRequestPrompt()">➕ Add Friend</button>
                 `;
+
+                // Handle Pending Invitations UI Frame
+                if (appSettings.pendingRequests && appSettings.pendingRequests.length > 0) {
+                    requestsContainer.style.display = 'block';
+                    const listHeader = document.createElement('div');
+                    listHeader.className = 'section-title';
+                    listHeader.innerText = `Pending Requests (${appSettings.pendingRequests.length})`;
+                    requestsContainer.appendChild(listHeader);
+
+                    appSettings.pendingRequests.forEach(user => {
+                        const reqDiv = document.createElement('div');
+                        reqDiv.className = 'request-item';
+                        reqDiv.innerHTML = `
+                            <div class="request-user">👤 ${user}</div>
+                            <div class="request-actions">
+                                <button class="req-btn req-accept" onclick="acceptFriendRequest('${user}')">Accept</button>
+                                <button class="req-btn req-deny" onclick="ignoreFriendRequest('${user}')">Ignore</button>
+                            </div>
+                        `;
+                        requestsContainer.appendChild(reqDiv);
+                    });
+                } else {
+                    requestsContainer.style.display = 'none';
+                }
 
                 if (currentDM) {
                     chatPane.style.display = 'flex';
@@ -1037,7 +1102,7 @@
                     div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
                     div.innerHTML = `
                         <div><span>👤</span>${dm}</div>
-                        <span class="remove-dm-btn" title="Remove Friend Thread">&times;</span>
+                        <span class="remove-dm-btn" title="Remove Listing">&times;</span>
                     `;
                     
                     div.onclick = () => { 
@@ -1057,8 +1122,82 @@
             }
         }
 
+        // --- Core Friend and DM Sync Functions ---
+        function sendFriendRequestPrompt() {
+            if (!appSettings.networkID) return;
+            const targetUser = prompt("Enter target friend's exact username:").trim().toLowerCase().replace(/\s+/g, '-');
+            if (!targetUser || targetUser === appSettings.username) return;
+
+            if (appSettings.directMessages.includes(targetUser)) {
+                alert("This user is already in your direct message list!");
+                return;
+            }
+
+            // Send standard peer-to-peer invitation via their inbox subscription tree
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.publish(`${appSettings.networkID}/inbox/${targetUser}`, JSON.stringify({
+                    sender: appSettings.username,
+                    type: 'friend_handshake'
+                }));
+                alert(`Friend request transmitted to "${targetUser}"! They will see it in their sidebar panel when they log in.`);
+            } else {
+                alert("Network error. Reconnect and try again.");
+            }
+        }
+
+        function acceptFriendRequest(senderName) {
+            // Strip from pending array
+            appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
+            
+            // Append to local listing
+            if (!appSettings.directMessages.includes(senderName)) {
+                appSettings.directMessages.push(senderName);
+            }
+            
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+
+            if (mqttClient) {
+                // Subscribe to mutual communication line channel
+                mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(senderName)}`);
+                
+                // Confirm callback acceptance back to their structural thread inbox so they synchronize instantly
+                mqttClient.publish(`${appSettings.networkID}/inbox/${senderName}`, JSON.stringify({
+                    sender: appSettings.username,
+                    type: 'friend_accepted'
+                }));
+            }
+
+            currentDM = senderName;
+            renderSidebars();
+            loadActiveChatFromCache();
+        }
+
+        function ignoreFriendRequest(senderName) {
+            appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            renderSidebars();
+        }
+
+        function createNewChannel() {
+            if (!appSettings.networkID) return;
+            const value = prompt("Enter Channel Name:");
+            if (!value) return;
+            
+            const cleanValue = value.trim().replace(/\s+/g, '-').toLowerCase();
+            if (!cleanValue) return;
+
+            if (!appSettings.groupChannels.includes(cleanValue)) {
+                appSettings.groupChannels.push(cleanValue);
+                if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${cleanValue}`);
+                currentGroup = cleanValue;
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
         function removeDirectMessageContext(targetDM) {
-            if(confirm(`Remove ${targetDM} from your active chat listings?`)) {
+            if(confirm(`Remove ${targetDM} from active listings?`)) {
                 appSettings.directMessages = appSettings.directMessages.filter(user => user !== targetDM);
                 localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
                 if(currentDM === targetDM) currentDM = '';
@@ -1070,8 +1209,7 @@
         function confirmResetChat() {
             if (!appSettings.networkID) return;
             const targetName = currentMode === 'servers' ? `#${currentGroup}` : `@${currentDM}`;
-            if (confirm(`🗑️ Delete all message logs for ${targetName}? This restarts the chat entirely.`)) {
-                
+            if (confirm(`🗑️ Delete all message logs for ${targetName}?`)) {
                 const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
                 chatHistoryCache[cacheKey] = [];
                 saveCacheToLocalStorage();
@@ -1101,44 +1239,6 @@
             loadActiveChatFromCache();
         }
 
-        function createNewTarget() {
-            if (!appSettings.networkID) return;
-            const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Friend\'s exact username:';
-            const value = prompt(`Enter ${promptLabel}`);
-            if (!value) return;
-            
-            const cleanValue = value.trim().replace(/\s+/g, '-').toLowerCase();
-            if (!cleanValue) return;
-
-            if (currentMode === 'servers') {
-                if (!appSettings.groupChannels.includes(cleanValue)) {
-                    appSettings.groupChannels.push(cleanValue);
-                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${cleanValue}`);
-                    currentGroup = cleanValue;
-                }
-            } else {
-                // Friend pairing layout setup
-                if (!appSettings.directMessages.includes(cleanValue)) {
-                    appSettings.directMessages.push(cleanValue);
-                    
-                    // Subscribe immediately to the pairing pipeline channel
-                    if (mqttClient) {
-                        mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(cleanValue)}`);
-                        // Ping the friend's secure inbox path so their application syncs and registers you back automatically
-                        mqttClient.publish(`${appSettings.networkID}/inbox/${cleanValue}`, JSON.stringify({ 
-                            sender: appSettings.username, 
-                            type: 'handshake' 
-                        }));
-                    }
-                    currentDM = cleanValue;
-                }
-            }
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-            renderSidebars();
-            loadActiveChatFromCache();
-            toggleMobileNav(false);
-        }
-
         function promptCreateServer() {
             const option = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code:").trim();
             if (!option) return;
@@ -1149,12 +1249,14 @@
                 appSettings.networkID = "server-" + Math.random().toString(36).substring(2, 9) + "-" + serverName.toLowerCase().replace(/\s+/g, '-');
                 appSettings.groupChannels = ['general', 'gaming'];
                 appSettings.directMessages = [];
+                appSettings.pendingRequests = [];
                 currentGroup = 'general';
                 currentDM = '';
             } else {
                 appSettings.networkID = option;
                 appSettings.groupChannels = ['general']; 
                 appSettings.directMessages = [];
+                appSettings.pendingRequests = [];
                 currentGroup = 'general';
                 currentDM = '';
             }
@@ -1246,15 +1348,21 @@
             const type = segments[1]; 
             const target = segments[2];
 
-            // Inbox Handshake Pairing Engine Logic
+            // Core Inbox Handler Pipeline
             if (type === 'inbox' && target === appSettings.username) {
-                if (payload.type === 'handshake' && !appSettings.directMessages.includes(payload.sender)) {
-                    appSettings.directMessages.push(payload.sender);
-                    localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-                    
-                    // Automatically bind subscription tracking to the matching key path token
-                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`);
-                    renderSidebars();
+                if (payload.type === 'friend_handshake') {
+                    if (!appSettings.directMessages.includes(payload.sender) && !appSettings.pendingRequests.includes(payload.sender)) {
+                        appSettings.pendingRequests.push(payload.sender);
+                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                        renderSidebars();
+                    }
+                } else if (payload.type === 'friend_accepted') {
+                    if (!appSettings.directMessages.includes(payload.sender)) {
+                        appSettings.directMessages.push(payload.sender);
+                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                        if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`);
+                        renderSidebars();
+                    }
                 }
                 return;
             }
@@ -1267,11 +1375,6 @@
                 }
             } else if (type === 'dms') {
                 if (target === getDMScope(payload.sender)) {
-                    if (!appSettings.directMessages.includes(payload.sender)) {
-                        appSettings.directMessages.push(payload.sender);
-                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-                        renderSidebars();
-                    }
                     const cacheKey = `dm_${payload.sender}`;
                     saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
                     if (currentMode === 'dms' && currentDM === payload.sender) {
@@ -1283,7 +1386,7 @@
 
         function transmitMessage(forcedText = null, forcedMedia = null) {
             if (!mqttClient || mqttClient.connected === false) {
-                alert("Disconnected from chat network. Click the status button at top-right to reconnect.");
+                alert("Offline. Reconnecting...");
                 return;
             }
             const input = document.getElementById('message-input');
@@ -1301,6 +1404,7 @@
                 destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
             } else {
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                // Save and reflect locally immediately for rapid UI updates
                 saveMessageToCache(`dm_${currentDM}`, payload.sender, payload.text, payload.mediaUrl);
                 appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
             }
@@ -1309,7 +1413,6 @@
             if (forcedText === null && input) input.value = '';
         }
 
-        // Send images
         function promptAttachMedia() {
             const url = prompt("Paste your Image Address link:");
             if (url) transmitMessage("", url);
@@ -1396,7 +1499,7 @@
             if (e.key === 'Enter') transmitMessage();
         });
 
-        // Local cache parsing
+        // Parse Local cache on bootstrap
         const cached = localStorage.getItem('discord_clone_user');
         if (cached) {
             const parsed = JSON.parse(cached);
@@ -1405,6 +1508,7 @@
                 if(!appSettings.blockedUsers) appSettings.blockedUsers = [];
                 if(!appSettings.groupChannels) appSettings.groupChannels = [];
                 if(!appSettings.directMessages) appSettings.directMessages = [];
+                if(!appSettings.pendingRequests) appSettings.pendingRequests = [];
                 
                 document.getElementById('login-screen').style.display = 'none';
                 completeStartup();

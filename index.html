@@ -1,1 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Lite</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #313338;
+            --bg-sidebar: #2b2d31;
+            --bg-servers: #1e1f22;
+            --text-normal: #dbdee1;
+            --text-muted: #949ba4;
+            --brand-color: #5865f2;
+            --success-color: #23a55a;
+            --danger-color: #f23f43;
+            --input-bg: #383a40;
+        }
 
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            display: flex;
+            height: 100vh;
+            background-color: var(--bg-primary);
+            color: var(--text-normal);
+            overflow: hidden;
+        }
+
+        /* Login Screen Overlay */
+        #login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #1e1f22;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-box {
+            background-color: #313338;
+            padding: 32px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-box h2 {
+            margin-bottom: 8px;
+            font-size: 24px;
+        }
+
+        .login-box p {
+            color: var(--text-muted);
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            background-color: #383a40;
+            border: 1px solid #1e1f22;
+            border-radius: 4px;
+            color: white;
+            font-size: 16px;
+            margin-bottom: 20px;
+            outline: none;
+        }
+
+        .login-box button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--brand-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .login-box button:hover {
+            background-color: #4752c4;
+        }
+
+        /* Server/Nav Column */
+        .servers-bar {
+            width: 72px;
+            background-color: var(--bg-servers);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 12px;
+            gap: 8px;
+        }
+
+        .server-icon {
+            width: 48px;
+            height: 48px;
+            background-color: var(--bg-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-normal);
+        }
+
+        .server-icon:hover, .server-icon.active {
+            border-radius: 30%;
+            background-color: var(--brand-color);
+            color: white;
+        }
+
+        /* Channels/DMs Sidebar */
+        .sidebar {
+            width: 240px;
+            background-color: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .sidebar-header {
+            height: 48px;
+            border-bottom: 1px solid #1f2023;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        .channel-list {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: var(--text-muted);
+            margin: 16px 0 4px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .add-btn {
+            cursor: pointer;
+            font-size: 16px;
+            padding-right: 8px;
+        }
+
+        .channel-item {
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 2px;
+            color: var(--text-muted);
+            font-size: 15px;
+        }
+
+        .channel-item:hover, .channel-item.active {
+            background-color: #35373c;
+            color: var(--text-normal);
+        }
+
+        .channel-item.active {
+            background-color: #404249;
+        }
+
+        /* User Profile Footer */
+        .user-footer {
+            height: 52px;
+            background-color: #232428;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            justify-content: space-between;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: var(--brand-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .username-display {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .settings-btn {
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 18px;
+        }
+
+        .settings-btn:hover {
+            color: var(--text-normal);
+        }
+
+        /* Main Chat Area */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-primary);
+        }
+
+        .chat-header {
+            height: 48px;
+            border-bottom: 1px solid #1f2023;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-weight: bold;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .network-status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            background-color: var(--danger-color);
+            color: white;
+            font-weight: normal;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            gap: 16px;
+        }
+
+        .message-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message-author {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .message-text {
+            font-size: 15px;
+            word-break: break-word;
+        }
+
+        .input-area {
+            padding: 0 16px 24px 16px;
+        }
+
+        .message-input {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--input-bg);
+            color: var(--text-normal);
+            font-size: 15px;
+            outline: none;
+        }
+
+        /* Settings View Overlay */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--bg-primary);
+            z-index: 100;
+            padding: 40px 10%;
+            overflow-y: auto;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 40px;
+        }
+
+        .settings-sidebar h3 {
+            margin-bottom: 12px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .settings-content h2 {
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--text-muted);
+            padding-bottom: 8px;
+        }
+
+        .setting-group {
+            margin-bottom: 24px;
+        }
+
+        .setting-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .setting-group input, .setting-group select {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px;
+            background-color: var(--input-bg);
+            border: 1px solid #1e1f22;
+            border-radius: 4px;
+            color: var(--text-normal);
+            font-size: 15px;
+        }
+
+        .privacy-flex {
+            display: flex;
+            gap: 8px;
+            max-width: 400px;
+        }
+
+        .privacy-flex input {
+            flex: 1;
+        }
+
+        .privacy-btn {
+            padding: 10px 16px;
+            background-color: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .blocked-list-ui {
+            margin-top: 12px;
+            background-color: var(--bg-sidebar);
+            border-radius: 4px;
+            max-width: 400px;
+            padding: 8px;
+        }
+
+        .blocked-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px;
+            border-bottom: 1px solid #1e1f22;
+        }
+
+        .blocked-item:last-child {
+            border-bottom: none;
+        }
+
+        .unblock-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .close-settings {
+            position: absolute;
+            top: 40px;
+            right: 10%;
+            background-color: transparent;
+            border: 2px solid var(--text-muted);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .close-settings:hover {
+            color: var(--text-normal);
+            border-color: var(--text-normal);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>Welcome back!</h2>
+            <p>We're so excited to see you again!</p>
+            <input type="text" id="login-username" placeholder="Enter a username..." autocomplete="off">
+            <button onclick="handleLogin()">Log In</button>
+        </div>
+    </div>
+
+    <div class="servers-bar">
+        <div class="server-icon active" id="server-view-btn" onclick="switchView('servers')" title="Group Servers">💬</div>
+        <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages">👤</div>
+    </div>
+
+    <div class="sidebar">
+        <div>
+            <div class="sidebar-header" id="sidebar-header-title">Public Guild</div>
+            <div class="channel-list">
+                <div class="section-title">
+                    <span id="section-label">Channels</span>
+                    <span class="add-btn" onclick="createNewTarget()">+</span>
+                </div>
+                <div id="channels-container">
+                    </div>
+            </div>
+        </div>
+
+        <div class="user-footer">
+            <div class="user-info">
+                <div class="avatar" id="user-avatar">U</div>
+                <div class="username-display" id="user-name-display">Username</div>
+            </div>
+            <button class="settings-btn" onclick="toggleSettings(true)" aria-label="Settings">⚙️</button>
+        </div>
+    </div>
+
+    <div class="chat-area">
+        <div class="chat-header">
+            <div class="header-left">
+                <span id="chat-header-symbol">#</span>
+                <span id="chat-header-name">general</span>
+            </div>
+            <div class="network-status" id="net-status-badge">Connecting...</div>
+        </div>
+        <div class="messages-container" id="messages-container">
+            </div>
+        <div class="input-area">
+            <input type="text" class="message-input" id="message-input" placeholder="Message..." autocomplete="off">
+        </div>
+    </div>
+
+    <div class="overlay" id="settings-overlay">
+        <button class="close-settings" onclick="toggleSettings(false)">ESC</button>
+        <div class="settings-grid">
+            <div class="settings-sidebar">
+                <h3>User Settings</h3>
+                <p style="font-weight:bold; color:var(--brand-color); margin-bottom: 16px;">App Configuration</p>
+                <button onclick="handleLogout()" style="background:none; border:none; color:var(--danger-color); cursor:pointer; font-weight:bold;">Log Out</button>
+            </div>
+            <div class="settings-content">
+                <h2>User & Accessibility Customization</h2>
+                
+                <div class="setting-group">
+                    <label for="input-username">Username</label>
+                    <input type="text" id="input-username" onchange="updateProfile()">
+                </div>
+
+                <div class="setting-group">
+                    <label for="select-theme">Theme Profile</label>
+                    <select id="select-theme" onchange="updateAccessibility()">
+                        <option value="dark">Discord Dark</option>
+                        <option value="light">Classic Light</option>
+                        <option value="amoled">High Contrast AMOLED Black</option>
+                        <option value="deuteranopia">Colorblind Assist (Deuteranopia)</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label for="input-font-size">Text Scale (Font Size)</label>
+                    <select id="input-font-size" onchange="updateAccessibility()">
+                        <option value="14px">Small (14px)</option>
+                        <option value="16px" selected>Normal (16px)</option>
+                        <option value="20px">Large (20px)</option>
+                        <option value="24px">Extra Large (24px)</option>
+                    </select>
+                </div>
+                
+                <div class="setting-group">
+                    <label for="input-app-id">Custom Network Project ID</label>
+                    <input type="text" id="input-app-id" placeholder="default-discord-clone" onchange="updateNetworkID()">
+                </div>
+
+                <h2>Privacy (Block & Ignore)</h2>
+                <div class="setting-group">
+                    <label for="privacy-username">Block / Ignore User</label>
+                    <div class="privacy-flex">
+                        <input type="text" id="privacy-username" placeholder="Type a username to block...">
+                        <button class="privacy-btn" onclick="blockUser()">Block</button>
+                    </div>
+                    <div class="blocked-list-ui" id="blocked-list-ui">
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        let currentMode = 'servers'; 
+        let currentGroup = 'general';
+        let currentDM = '';
+        
+        let appSettings = {
+            username: '',
+            theme: 'dark',
+            fontSize: '16px',
+            networkID: 'discord_clone_global_room',
+            blockedUsers: []
+        };
+
+        let groupChannels = ['general', 'gaming', 'memes'];
+        let directMessages = [];
+
+        // --- Authentication Pipeline ---
+        function handleLogin() {
+            const input = document.getElementById('login-username').value.trim().replace(/\s+/g, '-');
+            if (!input) return alert('Please enter a valid username.');
+            
+            appSettings.username = input;
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            
+            document.getElementById('login-screen').style.display = 'none';
+            completeStartup();
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('discord_clone_user');
+            window.location.reload();
+        }
+
+        // --- Network Logic (Upgraded to robust HiveMQ Public WebSocket Cluster) ---
+        let mqttClient;
+        
+        function initNetwork() {
+            const statusBadge = document.getElementById('net-status-badge');
+            if(mqttClient) mqttClient.end();
+            
+            statusBadge.innerText = "Connecting...";
+            statusBadge.style.backgroundColor = "var(--danger-color)";
+
+            // Switched cluster connection endpoint to HiveMQ secure cloud cluster
+            mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+            mqttClient.on('connect', () => {
+                statusBadge.innerText = "Connected";
+                statusBadge.style.backgroundColor = "var(--success-color)";
+                
+                groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
+                directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
+                mqttClient.subscribe(`${appSettings.networkID}/dms/+`);
+            });
+
+            mqttClient.on('error', (err) => {
+                console.error("Network interface error:", err);
+                statusBadge.innerText = "Error Connecting";
+                statusBadge.style.backgroundColor = "var(--danger-color)";
+            });
+
+            mqttClient.on('message', (topic, message) => {
+                try {
+                    const payload = JSON.parse(message.toString());
+                    if (appSettings.blockedUsers.includes(payload.sender)) return; 
+                    handleIncomingMessage(topic, payload);
+                } catch (e) {
+                    console.error("Payload tracking failure:", e);
+                }
+            });
+        }
+
+        function getDMScope(targetUser) {
+            return [appSettings.username, targetUser].sort().join("_to_");
+        }
+
+        // --- UI Rendering Actions ---
+        function renderSidebars() {
+            const container = document.getElementById('channels-container');
+            const title = document.getElementById('sidebar-header-title');
+            const sectionLabel = document.getElementById('section-label');
+            const sym = document.getElementById('chat-header-symbol');
+            const nameHeader = document.getElementById('chat-header-name');
+            
+            container.innerHTML = '';
+
+            if (currentMode === 'servers') {
+                title.innerText = "Public Guild";
+                sectionLabel.innerText = "Text Channels";
+                sym.innerText = "#";
+                nameHeader.innerText = currentGroup;
+
+                groupChannels.forEach(channel => {
+                    const div = document.createElement('div');
+                    div.className = `channel-item ${currentGroup === channel ? 'active' : ''}`;
+                    div.innerHTML = `<span>#</span> ${channel}`;
+                    div.onclick = () => { currentGroup = channel; renderSidebars(); clearChatUI(); };
+                    container.appendChild(div);
+                });
+            } else {
+                title.innerText = "Direct Messages";
+                sectionLabel.innerText = "Direct Messages";
+                sym.innerText = "@";
+                nameHeader.innerText = currentDM || "Select a friend";
+
+                directMessages.forEach(dm => {
+                    const div = document.createElement('div');
+                    div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
+                    div.innerHTML = `<span>👤</span> ${dm}`;
+                    div.onclick = () => { currentDM = dm; renderSidebars(); clearChatUI(); };
+                    container.appendChild(div);
+                });
+            }
+        }
+
+        function switchView(mode) {
+            currentMode = mode;
+            document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
+            document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
+            renderSidebars();
+            clearChatUI();
+        }
+
+        function createNewTarget() {
+            const label = currentMode === 'servers' ? 'Channel Name:' : 'User Profile Name:';
+            const value = prompt(`Enter new ${label}`).replace(/\s+/g, '-').toLowerCase();
+            if (!value) return;
+
+            if (currentMode === 'servers') {
+                if (!groupChannels.includes(value)) {
+                    groupChannels.push(value);
+                    mqttClient.subscribe(`${appSettings.networkID}/servers/${value}`);
+                    currentGroup = value;
+                }
+            } else {
+                if (!directMessages.includes(value)) {
+                    directMessages.push(value);
+                    mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(value)}`);
+                    currentDM = value;
+                }
+            }
+            renderSidebars();
+        }
+
+        // --- Privacy Processing ---
+        function blockUser() {
+            const input = document.getElementById('privacy-username');
+            const target = input.value.trim().replace(/\s+/g, '-');
+            if(!target || target === appSettings.username) return;
+
+            if(!appSettings.blockedUsers.includes(target)) {
+                appSettings.blockedUsers.push(target);
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                renderBlockedList();
+                clearChatUI();
+            }
+            input.value = '';
+        }
+
+        function unblockUser(target) {
+            appSettings.blockedUsers = appSettings.blockedUsers.filter(u => u !== target);
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            renderBlockedList();
+        }
+
+        function renderBlockedList() {
+            const listContainer = document.getElementById('blocked-list-ui');
+            listContainer.innerHTML = '';
+            if(appSettings.blockedUsers.length === 0) {
+                listContainer.innerHTML = `<p style="font-size:13px; color:var(--text-muted); padding: 4px;">No users currently blocked.</p>`;
+                return;
+            }
+            appSettings.blockedUsers.forEach(user => {
+                const item = document.createElement('div');
+                item.className = 'blocked-item';
+                item.innerHTML = `<span>${user}</span><button class="unblock-btn" onclick="unblockUser('${user}')">Unblock</button>`;
+                listContainer.appendChild(item);
+            });
+        }
+
+        // --- Message Pipeline ---
+        function clearChatUI() {
+            document.getElementById('messages-container').innerHTML = '';
+        }
+
+        function appendMessageUI(author, text) {
+            const container = document.getElementById('messages-container');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message';
+            
+            const initials = author.substring(0, 2).toUpperCase();
+            
+            msgDiv.innerHTML = `
+                <div class="avatar" style="background-color: ${stringToColor(author)}">${initials}</div>
+                <div class="message-content">
+                    <div class="message-author">${author}</div>
+                    <div class="message-text">${escapeHTML(text)}</div>
+                </div>
+            `;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleIncomingMessage(topic, payload) {
+            const segments = topic.split('/');
+            const type = segments[1]; 
+            const target = segments[2];
+
+            if (currentMode === 'servers' && type === 'servers' && target === currentGroup) {
+                appendMessageUI(payload.sender, payload.text);
+            } else if (type === 'dms') {
+                const combinedScope = getDMScope(payload.sender);
+                if (target === combinedScope) {
+                    if (!directMessages.includes(payload.sender)) {
+                        directMessages.push(payload.sender);
+                        renderSidebars();
+                    }
+                    if (currentMode === 'dms' && currentDM === payload.sender) {
+                        appendMessageUI(payload.sender, payload.text);
+                    }
+                }
+            }
+        }
+
+        function transmitMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (!text || (currentMode === 'dms' && !currentDM)) return;
+
+            const payload = {
+                sender: appSettings.username,
+                text: text,
+                timestamp: Date.now()
+            };
+
+            let destinationTopic = '';
+            if (currentMode === 'servers') {
+                destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
+            } else {
+                destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                appendMessageUI(payload.sender, payload.text);
+            }
+
+            mqttClient.publish(destinationTopic, JSON.stringify(payload));
+            input.value = '';
+        }
+
+        // --- Customization Configuration Engines ---
+        function toggleSettings(open) {
+            document.getElementById('settings-overlay').style.display = open ? 'block' : 'none';
+        }
+
+        function updateProfile() {
+            const newName = document.getElementById('input-username').value.trim().replace(/\s+/g, '-');
+            if(newName) {
+                appSettings.username = newName;
+                document.getElementById('user-avatar').innerText = newName.substring(0,2).toUpperCase();
+                document.getElementById('user-name-display').innerText = newName;
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                initNetwork();
+            }
+        }
+
+        function updateNetworkID() {
+            const netId = document.getElementById('input-app-id').value.trim();
+            if(netId) {
+                appSettings.networkID = netId;
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                initNetwork();
+                clearChatUI();
+            }
+        }
+
+        function updateAccessibility() {
+            const theme = document.getElementById('select-theme').value;
+            const size = document.getElementById('input-font-size').value;
+            
+            appSettings.theme = theme;
+            appSettings.fontSize = size;
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+
+            document.documentElement.style.fontSize = size;
+
+            const root = document.documentElement;
+            if (theme === 'dark') {
+                root.style.setProperty('--bg-primary', '#313338');
+                root.style.setProperty('--bg-sidebar', '#2b2d31');
+                root.style.setProperty('--bg-servers', '#1e1f22');
+                root.style.setProperty('--text-normal', '#dbdee1');
+                root.style.setProperty('--input-bg', '#383a40');
+            } else if (theme === 'light') {
+                root.style.setProperty('--bg-primary', '#ffffff');
+                root.style.setProperty('--bg-sidebar', '#f2f3f5');
+                root.style.setProperty('--bg-servers', '#e3e5e8');
+                root.style.setProperty('--text-normal', '#313338');
+                root.style.setProperty('--input-bg', '#e3e5e8');
+            } else if (theme === 'amoled') {
+                root.style.setProperty('--bg-primary', '#000000');
+                root.style.setProperty('--bg-sidebar', '#0a0a0a');
+                root.style.setProperty('--bg-servers', '#000000');
+                root.style.setProperty('--text-normal', '#ffffff');
+                root.style.setProperty('--input-bg', '#121212');
+            } else if (theme === 'deuteranopia') {
+                root.style.setProperty('--bg-primary', '#2d2a32');
+                root.style.setProperty('--brand-color', '#3b82f6');
+                root.style.setProperty('--text-normal', '#fdf0d5');
+                root.style.setProperty('--input-bg', '#3f3b46');
+            }
+        }
+
+        function stringToColor(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return `hsl(${Math.abs(hash % 360)}, 65%, 45%)`;
+        }
+
+        // Fix basic structural injection leaks
+        function escapeHTML(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // --- Core Startup Initialization ---
+        function completeStartup() {
+            document.getElementById('input-username').value = appSettings.username;
+            document.getElementById('user-avatar').innerText = appSettings.username.substring(0,2).toUpperCase();
+            document.getElementById('user-name-display').innerText = appSettings.username;
+            document.getElementById('select-theme').value = appSettings.theme;
+            document.getElementById('input-font-size').value = appSettings.fontSize;
+            document.getElementById('input-app-id').value = appSettings.networkID;
+
+            updateAccessibility();
+            initNetwork();
+            renderSidebars();
+            renderBlockedList();
+        }
+
+        document.getElementById('message-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') transmitMessage();
+        });
+        document.getElementById('login-username').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleLogin();
+        });
+
+        const cached = localStorage.getItem('discord_clone_user');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.username) {
+                appSettings = parsed;
+                if(!appSettings.blockedUsers) appSettings.blockedUsers = [];
+                document.getElementById('login-screen').style.display = 'none';
+                completeStartup();
+            }
+        }
+    </script>
+</body>
+</html>

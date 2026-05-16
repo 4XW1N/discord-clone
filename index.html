@@ -578,7 +578,7 @@
             window.location.reload();
         }
 
-        // --- Network Logic (Upgraded to robust HiveMQ Public WebSocket Cluster) ---
+        // --- Network Logic (HiveMQ Public WebSocket Cluster) ---
         let mqttClient;
         
         function initNetwork() {
@@ -588,7 +588,6 @@
             statusBadge.innerText = "Connecting...";
             statusBadge.style.backgroundColor = "var(--danger-color)";
 
-            // Switched cluster connection endpoint to HiveMQ secure cloud cluster
             mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
             mqttClient.on('connect', () => {
@@ -863,7 +862,6 @@
             return `hsl(${Math.abs(hash % 360)}, 65%, 45%)`;
         }
 
-        // Fix basic structural injection leaks
         function escapeHTML(str) {
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }

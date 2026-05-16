@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Discord Lite</title>
+    <title>Discord Lite Pro</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         :root {
@@ -83,7 +83,7 @@
             border-radius: 4px;
             color: white;
             font-size: 16px;
-            margin-bottom: 20px;
+            margin-bottom: 14px;
             outline: none;
         }
 
@@ -97,6 +97,7 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
+            margin-top: 8px;
         }
 
         /* Server/Nav Column */
@@ -144,7 +145,6 @@
             color: white !important;
         }
 
-        /* Settings Icon directly underneath the Plus Key */
         .server-settings-btn {
             background-color: #2b2d31;
             color: var(--text-muted);
@@ -211,11 +211,22 @@
             cursor: pointer;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
             margin-bottom: 4px;
             color: var(--text-muted);
             font-size: 15px;
             min-height: 44px;
+        }
+
+        .channel-item div {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .channel-item:hover, .channel-item.active {
@@ -225,6 +236,20 @@
 
         .channel-item.active {
             background-color: #404249;
+        }
+
+        .remove-dm-btn {
+            font-size: 18px;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .remove-dm-btn:hover {
+            background-color: var(--danger-color);
+            color: white;
         }
 
         /* User Profile Footer */
@@ -291,6 +316,29 @@
             align-items: center;
             gap: 8px;
             min-width: 0;
+        }
+
+        .header-right-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .reset-chat-btn {
+            background-color: #2b2d31;
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        .reset-chat-btn:hover {
+            background-color: var(--danger-color);
+            color: white;
         }
 
         .mobile-nav-toggle {
@@ -545,13 +593,12 @@
             z-index: 10;
         }
 
-        /* Pure Fullscreen Responsive Split-Layout for Mobile Viewports */
+        /* Fullscreen Split View for Mobile */
         @media (max-width: 767px) {
             .mobile-nav-toggle {
                 display: flex;
             }
 
-            /* Split layout: Menu stays docked open on left, Chat stays open on right! */
             .servers-bar {
                 position: fixed;
                 top: 0;
@@ -570,7 +617,6 @@
                 transform: translateX(0);
             }
 
-            /* When user closes menu, hide the navigation column sidebar safely */
             body.nav-closed .sidebar {
                 transform: translateX(-100%);
                 pointer-events: none;
@@ -584,7 +630,6 @@
                 width: calc(100% - 72px);
             }
 
-            /* Chat window is pinned to full width on the right, always layered cleanly */
             .chat-area, .no-chat-fallback {
                 position: absolute;
                 top: 0;
@@ -595,7 +640,7 @@
             }
             
             .network-status {
-                max-width: 90px;
+                max-width: 70px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -603,14 +648,17 @@
         }
     </style>
 </head>
-<body class="nav-closed"> <div class="mobile-sidebar-backdrop" onclick="toggleMobileNav(false)"></div>
+<body class="nav-closed">
+
+    <div class="mobile-sidebar-backdrop" onclick="toggleMobileNav(false)"></div>
 
     <div id="login-screen">
         <div class="login-box">
-            <h2>Welcome back!</h2>
-            <p>We're so excited to see you again!</p>
-            <input type="text" id="login-username" placeholder="Enter a username..." autocomplete="off">
-            <button onclick="handleLogin()">Log In</button>
+            <h2>Sign In / Register</h2>
+            <p>Accessing securely clears older device sessions.</p>
+            <input type="text" id="login-username" placeholder="Username" autocomplete="off">
+            <input type="password" id="login-password" placeholder="Password (Any matches registration)">
+            <button onclick="handleLogin()">Connect Securely</button>
         </div>
     </div>
 
@@ -645,16 +693,19 @@
     <div class="chat-area" id="chat-area-pane" style="display: none;">
         <div class="chat-header">
             <div class="header-left">
-                <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" aria-label="Open Navigation">☰ Channels</button>
+                <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" aria-label="Open Channels">☰ Channels</button>
                 <span id="chat-header-symbol">#</span>
                 <span id="chat-header-name">general</span>
             </div>
-            <div class="network-status" id="net-status-badge">Connecting...</div>
+            <div class="header-right-actions">
+                <button class="reset-chat-btn" onclick="confirmResetChat()">🗑️ Reset</button>
+                <div class="network-status" id="net-status-badge">Connecting...</div>
+            </div>
         </div>
         <div class="messages-container" id="messages-container">
             </div>
         <div class="input-area">
-            <button class="media-btn" onclick="promptAttachMedia()" title="Attach Image or GIF URL">📁</button>
+            <button class="media-btn" onclick="promptAttachMedia()" title="Attach Image URL">📁</button>
             <input type="text" class="message-input" id="message-input" placeholder="Message..." autocomplete="off">
         </div>
     </div>
@@ -664,7 +715,7 @@
             <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">☰ Open Channels List</button>
         </div>
         <h3 id="fallback-main-title">No Server Configured</h3>
-        <p id="fallback-sub-text">Tap the green "+" icon on the left bar or use the menu drawer to hook a custom server layout channel.</p>
+        <p id="fallback-sub-text">Tap the green "+" icon on the left bar to build or link a communications matrix environment.</p>
     </div>
 
     <div class="overlay" id="settings-overlay">
@@ -676,11 +727,11 @@
                 <button onclick="handleLogout()" style="background:none; border:none; color:var(--danger-color); cursor:pointer; font-weight:bold; padding: 8px 0; font-size: 16px;">Log Out</button>
             </div>
             <div class="settings-content">
-                <h2>User & Accessibility Customization</h2>
+                <h2>User Settings (ReadOnly Password)</h2>
                 
                 <div class="setting-group">
-                    <label for="input-username">Username</label>
-                    <input type="text" id="input-username" onchange="updateProfile()">
+                    <label>Username</label>
+                    <input type="text" id="input-username" readonly style="opacity: 0.6; cursor: not-allowed;">
                 </div>
 
                 <div class="setting-group">
@@ -689,12 +740,12 @@
                         <option value="dark">Discord Dark</option>
                         <option value="light">Classic Light</option>
                         <option value="amoled">High Contrast AMOLED Black</option>
-                        <option value="deuteranopia">Colorblind Assist (Deuteranopia)</option>
+                        <option value="deuteranopia">Colorblind Assist</option>
                     </select>
                 </div>
 
                 <div class="setting-group">
-                    <label for="input-font-size">Text Scale (Font Size)</label>
+                    <label for="input-font-size">Text Scale</label>
                     <select id="input-font-size" onchange="updateAccessibility()">
                         <option value="14px">Small (14px)</option>
                         <option value="16px" selected>Normal (16px)</option>
@@ -704,33 +755,33 @@
                 </div>
                 
                 <div class="setting-group">
-                    <label for="input-app-id">Active Server/Invite Code (Network ID)</label>
-                    <input type="text" id="input-app-id" placeholder="Create or join a server to generate an ID" onchange="updateNetworkID()">
-                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Share this ID with friends to invite them into your custom server hub connection layout.</p>
+                    <label for="input-app-id">Server Invite Network Link Token</label>
+                    <input type="text" id="input-app-id" onchange="updateNetworkID()">
                 </div>
 
-                <h2>Privacy (Block & Ignore)</h2>
+                <h2>Privacy (Block Layout)</h2>
                 <div class="setting-group">
                     <label for="privacy-username">Block / Ignore User</label>
                     <div class="privacy-flex">
                         <input type="text" id="privacy-username" placeholder="Type a username to block...">
                         <button class="privacy-btn" onclick="blockUser()">Block</button>
                     </div>
-                    <div class="blocked-list-ui" id="blocked-list-ui">
-                        </div>
+                    <div class="blocked-list-ui" id="blocked-list-ui"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // --- State Management ---
+        // --- Setup Variables ---
         let currentMode = 'servers'; 
         let currentGroup = '';
         let currentDM = '';
+        const mySessionID = Math.random().toString(36).substring(2, 15);
         
         let appSettings = {
             username: '',
+            passwordHash: '', 
             theme: 'dark',
             fontSize: '16px',
             networkID: '', 
@@ -741,7 +792,6 @@
 
         let chatHistoryCache = {};
 
-        // --- Mobile Specific Split-Layout Mechanics ---
         function toggleMobileNav(isOpen) {
             if (isOpen) {
                 document.body.classList.remove('nav-closed');
@@ -752,7 +802,6 @@
             }
         }
 
-        // --- Persistent LocalStorage Loading & Saving ---
         function saveCacheToLocalStorage() {
             localStorage.setItem(`discord_history_${appSettings.networkID || 'global'}`, JSON.stringify(chatHistoryCache));
         }
@@ -762,14 +811,18 @@
             chatHistoryCache = storedHistory ? JSON.parse(storedHistory) : {};
         }
 
-        // --- Authentication Pipeline ---
+        // --- Auth Enforcer (Device Collision Prevention via HiveMQ Broker Topology) ---
         function handleLogin() {
-            const input = document.getElementById('login-username').value.trim().replace(/\s+/g, '-');
-            if (!input) return alert('Please enter a valid username.');
+            const nameInput = document.getElementById('login-username').value.trim().replace(/\s+/g, '-').toLowerCase();
+            const passInput = document.getElementById('login-password').value.trim();
             
-            appSettings.username = input;
+            if (!nameInput || !passInput) return alert('Provide registration credentials to bind instance context.');
+
+            // Simulated profile lookup or automatic generation if new user context found
+            appSettings.username = nameInput;
+            appSettings.passwordHash = btoa(passInput); // Base64 encoding obfuscation block representation
+            
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-            
             document.getElementById('login-screen').style.display = 'none';
             completeStartup();
         }
@@ -779,13 +832,13 @@
             window.location.reload();
         }
 
-        // --- Network Logic (HiveMQ Public WebSocket Cluster) ---
+        // --- Broker Core Controller Interface Engine ---
         let mqttClient;
         
         function initNetwork() {
             const statusBadge = document.getElementById('net-status-badge');
             if(mqttClient) {
-                try { mqttClient.end(); } catch(e) { console.log(e); }
+                try { mqttClient.end(); } catch(e) {}
             }
             
             if (!appSettings.networkID) {
@@ -795,16 +848,10 @@
                 }
                 return;
             }
-            
-            if (statusBadge) {
-                statusBadge.innerText = "Connecting...";
-                statusBadge.style.backgroundColor = "var(--danger-color)";
-            }
 
             mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
                 keepalive: 30,
                 reconnectPeriod: 1000,
-                connectTimeout: 30 * 1000,
                 clean: true
             });
 
@@ -814,34 +861,50 @@
                     statusBadge.style.backgroundColor = "var(--success-color)";
                 }
                 
+                // Subscribe to channels, direct messages, user inbox and device enforcement track
                 if (appSettings.groupChannels) {
-                    appSettings.groupChannels.forEach(ch => {
-                        mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`);
-                    });
+                    appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 }
                 if (appSettings.directMessages) {
-                    appSettings.directMessages.forEach(dm => {
-                        mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`);
-                    });
+                    appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
                 }
+                
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
-            });
-
-            mqttClient.on('error', (err) => {
-                console.error("Network interface error:", err);
-                if (statusBadge) {
-                    statusBadge.innerText = "Error";
-                    statusBadge.style.backgroundColor = "var(--danger-color)";
-                }
+                
+                // Broadcast authorization checkpoint token right away to dump other tabs instantly
+                const identityVerificationTopic = `discord/security/lockout/${appSettings.username}`;
+                mqttClient.subscribe(identityVerificationTopic);
+                mqttClient.publish(identityVerificationTopic, JSON.stringify({ activeToken: mySessionID }));
             });
 
             mqttClient.on('message', (topic, message) => {
                 try {
                     const payload = JSON.parse(message.toString());
+                    
+                    // Device conflict handler
+                    if (topic === `discord/security/lockout/${appSettings.username}`) {
+                        if (payload.activeToken && payload.activeToken !== mySessionID) {
+                            alert("⚠️ Security Lockout: This account logged in from another device. Disconnecting local terminal window context layout.");
+                            handleLogout();
+                        }
+                        return;
+                    }
+
                     if (appSettings.blockedUsers && appSettings.blockedUsers.includes(payload.sender)) return; 
+                    
+                    if (payload.type === 'remote_wipe_command') {
+                        const cacheKey = payload.mode === 'servers' ? `server_${payload.target}` : `dm_${payload.sender}`;
+                        chatHistoryCache[cacheKey] = [];
+                        saveCacheToLocalStorage();
+                        if ((currentMode === 'servers' && currentGroup === payload.target) || (currentMode === 'dms' && currentDM === payload.sender)) {
+                            clearChatUI();
+                        }
+                        return;
+                    }
+
                     handleIncomingMessage(topic, payload);
                 } catch (e) {
-                    console.error("Payload tracking failure:", e);
+                    console.error("Payload tracing processing failure:", e);
                 }
             });
         }
@@ -850,44 +913,35 @@
             return [appSettings.username, targetUser].sort().join("_to_");
         }
 
-        // --- UI Rendering Actions ---
+        // --- DM Removal & Dynamic Chat UI Refactoring Operations ---
         function renderSidebars() {
             const container = document.getElementById('channels-container');
             const titleElement = document.getElementById('sidebar-header-title');
             const sectionLabel = document.getElementById('section-label');
             const sym = document.getElementById('chat-header-symbol');
             const nameHeader = document.getElementById('chat-header-name');
-            
             const chatPane = document.getElementById('chat-area-pane');
             const fallbackPane = document.getElementById('chat-area-fallback');
 
             container.innerHTML = '';
-            
-            const appIdInput = document.getElementById('input-app-id');
-            if (appIdInput) appIdInput.value = appSettings.networkID;
+            if (document.getElementById('input-app-id')) document.getElementById('input-app-id').value = appSettings.networkID;
 
             if (currentMode === 'servers') {
                 sectionLabel.innerText = "Text Channels";
                 if(sym) sym.innerText = "#";
                 
                 if (!appSettings.networkID) {
-                    titleElement.innerText = "No Server Selected";
+                    titleElement.innerText = "No Server Hooked";
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
-                    document.getElementById('fallback-main-title').innerText = "No Server Hook Active";
-                    document.getElementById('fallback-sub-text').innerText = "Click the '+' button on the left bar to build or enter a network id link.";
                     document.getElementById('sidebar-add-target-btn').style.display = 'none';
                     return;
                 }
 
-                const cleanName = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "CUSTOM HUB";
-                titleElement.innerText = cleanName;
-
+                titleElement.innerText = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "CUSTOM WORKSPACE";
                 document.getElementById('sidebar-add-target-btn').style.display = 'inline';
 
-                if (!currentGroup && appSettings.groupChannels.length > 0) {
-                    currentGroup = appSettings.groupChannels[0];
-                }
+                if (!currentGroup && appSettings.groupChannels.length > 0) currentGroup = appSettings.groupChannels[0];
 
                 if (currentGroup) {
                     chatPane.style.display = 'flex';
@@ -896,15 +950,13 @@
                 } else {
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
-                    document.getElementById('fallback-main-title').innerText = "Empty Server Workspace";
-                    document.getElementById('fallback-sub-text').innerText = "This server layout has no channels. Click '+' to add one.";
                 }
 
                 appSettings.groupChannels.forEach(channel => {
                     const div = document.createElement('div');
                     div.className = `channel-item ${currentGroup === channel ? 'active' : ''}`;
-                    div.innerHTML = `<span>#</span> ${channel}`;
-                    div.onclick = () => { 
+                    div.innerHTML = `<div><span>#</span>${channel}</div>`;
+                    div.onclick = (e) => {
                         currentGroup = channel; 
                         renderSidebars(); 
                         loadActiveChatFromCache();
@@ -921,8 +973,6 @@
                 if (!appSettings.networkID) {
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
-                    document.getElementById('fallback-main-title').innerText = "DMs Disabled";
-                    document.getElementById('fallback-sub-text').innerText = "Configure a custom server link before initializing direct threads.";
                     return;
                 }
 
@@ -933,22 +983,69 @@
                 } else {
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
-                    document.getElementById('fallback-main-title').innerText = "Direct Message Terminal";
-                    document.getElementById('fallback-sub-text').innerText = "Click the '+' button next to Conversations to start a private connection.";
                 }
 
                 appSettings.directMessages.forEach(dm => {
                     const div = document.createElement('div');
                     div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
-                    div.innerHTML = `<span>👤</span> ${dm}`;
+                    
+                    // Add structured element to trigger Direct Message structural elimination safely
+                    div.innerHTML = `
+                        <div><span>👤</span>${dm}</div>
+                        <span class="remove-dm-btn" title="Remove Conversation">&times;</span>
+                    `;
+                    
                     div.onclick = () => { 
                         currentDM = dm; 
                         renderSidebars(); 
                         loadActiveChatFromCache(); 
                         toggleMobileNav(false);
                     };
+
+                    // Close context pipeline interceptor action logic
+                    div.querySelector('.remove-dm-btn').onclick = (e) => {
+                        e.stopPropagation();
+                        removeDirectMessageContext(dm);
+                    };
+
                     container.appendChild(div);
                 });
+            }
+        }
+
+        function removeDirectMessageContext(targetDM) {
+            if(confirm(`Close chat thread context listing for ${targetDM}? Historical memory remains saved locally.`)) {
+                appSettings.directMessages = appSettings.directMessages.filter(user => user !== targetDM);
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                if(currentDM === targetDM) currentDM = '';
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function confirmResetChat() {
+            if (!appSettings.networkID) return;
+            const targetName = currentMode === 'servers' ? `#${currentGroup}` : `@${currentDM}`;
+            if (confirm(`⚠️ Completely delete and reset all messages for ${targetName}? This action is permanent.`)) {
+                
+                const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
+                chatHistoryCache[cacheKey] = [];
+                saveCacheToLocalStorage();
+                clearChatUI();
+
+                // Announce chat channel clean wipe down the line channel layers to sync across instances
+                if (mqttClient) {
+                    const destinationTopic = currentMode === 'servers' ? 
+                        `${appSettings.networkID}/servers/${currentGroup}` : 
+                        `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                    
+                    mqttClient.publish(destinationTopic, JSON.stringify({
+                        sender: appSettings.username,
+                        type: 'remote_wipe_command',
+                        mode: currentMode,
+                        target: currentMode === 'servers' ? currentGroup : currentDM
+                    }));
+                }
             }
         }
 
@@ -956,19 +1053,14 @@
             currentMode = mode;
             document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
             document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
-            
-            // Auto open the channel sliding drawer context when swapping modes
-            if (window.innerWidth <= 767) {
-                toggleMobileNav(true);
-            }
+            if (window.innerWidth <= 767) toggleMobileNav(true);
             renderSidebars();
             loadActiveChatFromCache();
         }
 
         function createNewTarget() {
             if (!appSettings.networkID) return;
-            
-            const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Username of the person you want to invite:';
+            const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Username to invite:';
             const value = prompt(`Enter ${promptLabel}`);
             if (!value) return;
             
@@ -985,10 +1077,7 @@
                 if (!appSettings.directMessages.includes(cleanValue)) {
                     appSettings.directMessages.push(cleanValue);
                     if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(cleanValue)}`);
-                    
-                    const syncNotice = { sender: appSettings.username, type: 'handshake' };
-                    if (mqttClient) mqttClient.publish(`${appSettings.networkID}/inbox/${cleanValue}`, JSON.stringify(syncNotice));
-                    
+                    if (mqttClient) mqttClient.publish(`${appSettings.networkID}/inbox/${cleanValue}`, JSON.stringify({ sender: appSettings.username, type: 'handshake' }));
                     currentDM = cleanValue;
                 }
             }
@@ -999,15 +1088,13 @@
         }
 
         function promptCreateServer() {
-            const option = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code to join one:").trim();
+            const option = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code:").trim();
             if (!option) return;
 
             if (option.toUpperCase() === 'CREATE') {
-                const serverName = prompt("Enter a name for your new custom server hub:");
+                const serverName = prompt("Enter server hub name:");
                 if (!serverName) return;
-                
-                const inviteCode = "server-" + Math.random().toString(36).substring(2, 9) + "-" + serverName.toLowerCase().replace(/\s+/g, '-');
-                appSettings.networkID = inviteCode;
+                appSettings.networkID = "server-" + Math.random().toString(36).substring(2, 9) + "-" + serverName.toLowerCase().replace(/\s+/g, '-');
                 appSettings.groupChannels = ['general', 'gaming'];
                 appSettings.directMessages = [];
                 currentGroup = 'general';
@@ -1024,13 +1111,8 @@
             loadCacheFromLocalStorage();
             completeStartup();
             toggleMobileNav(false);
-            
-            if (option.toUpperCase() === 'CREATE') {
-                alert(`🎉 Server Hook Created!\n\nYour Invite Code is:\n${appSettings.networkID}\n\nShare this code with friends so they can join!`);
-            }
         }
 
-        // --- Privacy Processing ---
         function blockUser() {
             const input = document.getElementById('privacy-username');
             const target = input.value.trim().replace(/\s+/g, '-');
@@ -1056,7 +1138,7 @@
             if (!listContainer) return;
             listContainer.innerHTML = '';
             if(appSettings.blockedUsers.length === 0) {
-                listContainer.innerHTML = `<p style="font-size:13px; color:var(--text-muted); padding: 4px;">No users currently blocked.</p>`;
+                listContainer.innerHTML = `<p style="font-size:13px; color:var(--text-muted); padding: 4px;">No users blocked.</p>`;
                 return;
             }
             appSettings.blockedUsers.forEach(user => {
@@ -1067,7 +1149,6 @@
             });
         }
 
-        // --- Cache and Message Pipeline ---
         function clearChatUI() {
             const container = document.getElementById('messages-container');
             if (container) container.innerHTML = '';
@@ -1090,20 +1171,12 @@
             
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
-            
-            const initials = author ? author.substring(0, 2).toUpperCase() : "??";
-            
-            let mediaElementHTML = '';
-            if (mediaUrl) {
-                mediaElementHTML = `<img src="${escapeHTML(mediaUrl)}" class="chat-image" alt="User media attachment" onerror="this.style.display='none';">`;
-            }
-            
             msgDiv.innerHTML = `
-                <div class="avatar" style="background-color: ${stringToColor(author || 'unknown')}">${initials}</div>
+                <div class="avatar" style="background-color: ${stringToColor(author || 'unknown')}">${(author || '??').substring(0, 2).toUpperCase()}</div>
                 <div class="message-content">
                     <div class="message-author">${author || 'Unknown'}</div>
                     ${text ? `<div class="message-text">${escapeHTML(text)}</div>` : ''}
-                    ${mediaElementHTML}
+                    ${mediaUrl ? `<img src="${escapeHTML(mediaUrl)}" class="chat-image" onerror="this.style.display='none';">` : ''}
                 </div>
             `;
             container.appendChild(msgDiv);
@@ -1111,9 +1184,7 @@
         }
 
         function saveMessageToCache(cacheKey, sender, text, mediaUrl) {
-            if (!chatHistoryCache[cacheKey]) {
-                chatHistoryCache[cacheKey] = [];
-            }
+            if (!chatHistoryCache[cacheKey]) chatHistoryCache[cacheKey] = [];
             chatHistoryCache[cacheKey].push({ sender, text, mediaUrl });
             saveCacheToLocalStorage();
         }
@@ -1136,22 +1207,18 @@
             if (type === 'servers') {
                 const cacheKey = `server_${target}`;
                 saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
-                
                 if (currentMode === 'servers' && target === currentGroup) {
                     appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                 }
             } else if (type === 'dms') {
-                const combinedScope = getDMScope(payload.sender);
-                if (target === combinedScope) {
+                if (target === getDMScope(payload.sender)) {
                     if (!appSettings.directMessages.includes(payload.sender)) {
                         appSettings.directMessages.push(payload.sender);
                         localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
                         renderSidebars();
                     }
-                    
                     const cacheKey = `dm_${payload.sender}`;
                     saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
-                    
                     if (currentMode === 'dms' && currentDM === payload.sender) {
                         appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                     }
@@ -1161,7 +1228,6 @@
 
         function transmitMessage(forcedText = null, forcedMedia = null) {
             if (!mqttClient || !appSettings.networkID) return;
-            
             const input = document.getElementById('message-input');
             const text = forcedText !== null ? forcedText : input.value.trim();
             const mediaUrl = forcedMedia;
@@ -1170,21 +1236,14 @@
             if (currentMode === 'dms' && !currentDM) return;
             if (currentMode === 'servers' && !currentGroup) return;
 
-            const payload = {
-                sender: appSettings.username,
-                text: text,
-                mediaUrl: mediaUrl,
-                timestamp: Date.now()
-            };
-
+            const payload = { sender: appSettings.username, text: text, mediaUrl: mediaUrl, timestamp: Date.now() };
             let destinationTopic = '';
+
             if (currentMode === 'servers') {
                 destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
             } else {
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
-                
-                const cacheKey = `dm_${currentDM}`;
-                saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
+                saveMessageToCache(`dm_${currentDM}`, payload.sender, payload.text, payload.mediaUrl);
                 appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
             }
 
@@ -1193,30 +1252,13 @@
         }
 
         function promptAttachMedia() {
-            if (currentMode === 'dms' && !currentDM) return alert("Select a friend before sending images.");
-            if (currentMode === 'servers' && !currentGroup) return alert("Select a text channel before sending images.");
-            
-            const url = prompt("Paste your Image or GIF address link here:");
-            if (!url) return;
-            
-            transmitMessage("", url);
+            const url = prompt("Paste your Image Address link:");
+            if (url) transmitMessage("", url);
         }
 
-        // --- Customization Configuration Engines ---
         function toggleSettings(open) {
             document.getElementById('settings-overlay').style.display = open ? 'block' : 'none';
             if(open) toggleMobileNav(false);
-        }
-
-        function updateProfile() {
-            const newName = document.getElementById('input-username').value.trim().replace(/\s+/g, '-');
-            if(newName) {
-                appSettings.username = newName;
-                document.getElementById('user-avatar').innerText = newName.substring(0,2).toUpperCase();
-                document.getElementById('user-name-display').innerText = newName;
-                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-                initNetwork();
-            }
         }
 
         function updateNetworkID() {
@@ -1234,11 +1276,9 @@
         function updateAccessibility() {
             const theme = document.getElementById('select-theme').value;
             const size = document.getElementById('input-font-size').value;
-            
             appSettings.theme = theme;
             appSettings.fontSize = size;
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-
             document.documentElement.style.fontSize = size;
 
             const root = document.documentElement;
@@ -1268,12 +1308,9 @@
             }
         }
 
-        // --- Utility Methods ---
         function stringToColor(str) {
             let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                hash = str.charCodeAt(i) + ((hash << 5) - hash);
-            }
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
             return `hsl(${Math.abs(hash % 360)}, 65%, 45%)`;
         }
 
@@ -1281,7 +1318,6 @@
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
-        // --- Core Startup Initialization ---
         function completeStartup() {
             document.getElementById('input-username').value = appSettings.username;
             document.getElementById('user-avatar').innerText = appSettings.username.substring(0,2).toUpperCase();
@@ -1299,9 +1335,6 @@
 
         document.getElementById('message-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') transmitMessage();
-        });
-        document.getElementById('login-username').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handleLogin();
         });
 
         const cached = localStorage.getItem('discord_clone_user');

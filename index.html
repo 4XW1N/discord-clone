@@ -513,7 +513,7 @@
 
     <div class="sidebar">
         <div>
-            <div class="sidebar-header" id="sidebar-header-title">No Server Selected</div>
+            <div class="sidebar-header" id="sidebar-header-title" data-server-display="No Server Selected">No Server Selected</div>
             <div class="channel-list">
                 <div class="section-title">
                     <span id="section-label">Channels</span>
@@ -620,13 +620,12 @@
             username: '',
             theme: 'dark',
             fontSize: '16px',
-            networkID: '', // Starts completely blank now
+            networkID: '', 
             blockedUsers: [],
             groupChannels: [],
             directMessages: []
         };
 
-        // Live runtime cache
         let chatHistoryCache = {};
 
         // --- Persistent LocalStorage Loading & Saving ---
@@ -636,11 +635,7 @@
 
         function loadCacheFromLocalStorage() {
             const storedHistory = localStorage.getItem(`discord_history_${appSettings.networkID || 'global'}`);
-            if (storedHistory) {
-                chatHistoryCache = JSON.parse(storedHistory);
-            } else {
-                chatHistoryCache = {};
-            }
+            chatHistoryCache = storedHistory ? JSON.parse(storedHistory) : {};
         }
 
         // --- Authentication Pipeline ---
@@ -684,8 +679,6 @@
                 
                 appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
-                
-                // Inbox handshake routing channel mapping
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
             });
 
@@ -713,7 +706,7 @@
         // --- UI Rendering Actions ---
         function renderSidebars() {
             const container = document.getElementById('channels-container');
-            const title = document.getElementById('sidebar-header-title');
+            const titleElement = document.getElementById('sidebar-header-title');
             const sectionLabel = document.getElementById('section-label');
             const sym = document.getElementById('chat-header-symbol');
             const nameHeader = document.getElementById('chat-header-name');
@@ -722,16 +715,15 @@
             const fallbackPane = document.getElementById('chat-area-fallback');
 
             container.innerHTML = '';
-
-            // Update configuration context layout fields
             document.getElementById('input-app-id').value = appSettings.networkID;
 
             if (currentMode === 'servers') {
-                title.innerText = appSettings.networkID ? appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "Custom Hub" : "No Server Selected";
                 sectionLabel.innerText = "Text Channels";
                 sym.innerText = "#";
                 
                 if (!appSettings.networkID) {
+                    titleElement.innerText = "No Server Selected";
+                    titleElement.setAttribute('data-server-display', "No Server Selected");
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     document.getElementById('fallback-main-title').innerText = "No Server Hook Active";
@@ -739,6 +731,11 @@
                     document.getElementById('sidebar-add-target-btn').style.display = 'none';
                     return;
                 }
+
+                // Process dynamic name out of HTML attributes
+                const cleanName = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "CUSTOM HUB";
+                titleElement.innerText = cleanName;
+                titleElement.setAttribute('data-server-display', cleanName);
 
                 document.getElementById('sidebar-add-target-btn').style.display = 'inline';
 
@@ -765,7 +762,8 @@
                     container.appendChild(div);
                 });
             } else {
-                title.innerText = "Direct Messages";
+                titleElement.innerText = "Direct Messages";
+                titleElement.setAttribute('data-server-display', "Direct Messages");
                 sectionLabel.innerText = "Conversations";
                 sym.innerText = "@";
                 document.getElementById('sidebar-add-target-btn').style.display = appSettings.networkID ? 'inline' : 'none';
@@ -773,7 +771,7 @@
                 if (!appSettings.networkID) {
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
-                    document.getElementById('fallback-main-title').innerText = "DMs Disableded";
+                    document.getElementById('fallback-main-title').innerText = "DMs Disabled";
                     document.getElementById('fallback-sub-text').innerText = "You must configure or connect to a custom server environment hub first before sending direct messages.";
                     return;
                 }
@@ -809,25 +807,30 @@
 
         function createNewTarget() {
             if (!appSettings.networkID) return;
-            const label = currentMode === 'servers' ? 'Channel Name:' : 'User Profile Name:';
-            const value = prompt(`Enter new ${label}`).replace(/\s+/g, '-').toLowerCase();
+            
+            // Explicitly requests structural data parameters based on active context layout
+            const promptLabel = currentMode === 'servers' ? 'Channel Name:' : 'Username of the person you want to invite:';
+            const value = prompt(`Enter ${promptLabel}`);
             if (!value) return;
+            
+            const cleanValue = value.trim().replace(/\s+/g, '-').toLowerCase();
+            if (!cleanValue) return;
 
             if (currentMode === 'servers') {
-                if (!appSettings.groupChannels.includes(value)) {
-                    appSettings.groupChannels.push(value);
-                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${value}`);
-                    currentGroup = value;
+                if (!appSettings.groupChannels.includes(cleanValue)) {
+                    appSettings.groupChannels.push(cleanValue);
+                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${cleanValue}`);
+                    currentGroup = cleanValue;
                 }
             } else {
-                if (!appSettings.directMessages.includes(value)) {
-                    appSettings.directMessages.push(value);
-                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(value)}`);
+                if (!appSettings.directMessages.includes(cleanValue)) {
+                    appSettings.directMessages.push(cleanValue);
+                    if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(cleanValue)}`);
                     
                     const syncNotice = { sender: appSettings.username, type: 'handshake' };
-                    if (mqttClient) mqttClient.publish(`${appSettings.networkID}/inbox/${value}`, JSON.stringify(syncNotice));
+                    if (mqttClient) mqttClient.publish(`${appSettings.networkID}/inbox/${cleanValue}`, JSON.stringify(syncNotice));
                     
-                    currentDM = value;
+                    currentDM = cleanValue;
                 }
             }
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
@@ -835,7 +838,6 @@
             loadActiveChatFromCache();
         }
 
-        // --- Advanced Hub Invite Generation ---
         function promptCreateServer() {
             const option = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code to join one:").trim();
             if (!option) return;
@@ -851,9 +853,8 @@
                 currentGroup = 'general';
                 currentDM = '';
             } else {
-                // Treated as entering a pre-existing custom server room string
                 appSettings.networkID = option;
-                appSettings.groupChannels = ['general']; // Fallback baseline channel to enter
+                appSettings.groupChannels = ['general']; 
                 appSettings.directMessages = [];
                 currentGroup = 'general';
                 currentDM = '';

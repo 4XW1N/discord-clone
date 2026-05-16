@@ -120,12 +120,23 @@
             cursor: pointer;
             transition: all 0.2s ease;
             color: var(--text-normal);
+            font-size: 18px;
         }
 
         .server-icon:hover, .server-icon.active {
             border-radius: 30%;
             background-color: var(--brand-color);
             color: white;
+        }
+
+        .add-server-btn {
+            background-color: #2b2d31;
+            color: var(--success-color);
+        }
+
+        .add-server-btn:hover {
+            background-color: var(--success-color) !important;
+            color: white !important;
         }
 
         /* Channels/DMs Sidebar */
@@ -300,12 +311,40 @@
             word-break: break-word;
         }
 
+        .chat-image {
+            max-width: 300px;
+            max-height: 250px;
+            border-radius: 8px;
+            margin-top: 8px;
+            display: block;
+            object-fit: contain;
+            background-color: rgba(0,0,0,0.1);
+        }
+
         .input-area {
             padding: 0 16px 24px 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .media-btn {
+            background-color: var(--input-bg);
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .media-btn:hover {
+            color: var(--text-normal);
         }
 
         .message-input {
-            width: 100%;
+            flex: 1;
             padding: 14px;
             border-radius: 8px;
             border: none;
@@ -450,6 +489,7 @@
     <div class="servers-bar">
         <div class="server-icon active" id="server-view-btn" onclick="switchView('servers')" title="Group Servers">💬</div>
         <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages">👤</div>
+        <div class="server-icon add-server-btn" onclick="promptCreateServer()" title="Create New Server Hub">+</div>
     </div>
 
     <div class="sidebar">
@@ -485,6 +525,7 @@
         <div class="messages-container" id="messages-container">
             </div>
         <div class="input-area">
+            <button class="media-btn" onclick="promptAttachMedia()" title="Attach Image or GIF URL">📁</button>
             <input type="text" class="message-input" id="message-input" placeholder="Message..." autocomplete="off">
         </div>
     </div>
@@ -526,8 +567,9 @@
                 </div>
                 
                 <div class="setting-group">
-                    <label for="input-app-id">Custom Network Project ID</label>
+                    <label for="input-app-id">Active Server/Invite Code (Network ID)</label>
                     <input type="text" id="input-app-id" placeholder="default-discord-clone" onchange="updateNetworkID()">
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Share this ID with friends to invite them into your custom server hub connection.</p>
                 </div>
 
                 <h2>Privacy (Block & Ignore)</h2>
@@ -558,7 +600,7 @@
             blockedUsers: []
         };
 
-        // Session data history object cache mapping
+        // Cache mapped object for storing message logs locally
         let chatHistoryCache = {};
 
         let groupChannels = ['general', 'gaming', 'memes'];
@@ -600,7 +642,7 @@
                 groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
                 
-                // Global personal inbox listener channel to catch incoming handshakes/invites from other users
+                // Inbox handshake routing channel mapping
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
             });
 
@@ -686,11 +728,8 @@
             } else {
                 if (!directMessages.includes(value)) {
                     directMessages.push(value);
-                    
-                    // 1. Instantly subscribe to the new DM pipeline scope locally
                     mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(value)}`);
                     
-                    // 2. Transmit an internal handshake notification to the remote peer's inbox
                     const syncNotice = { sender: appSettings.username, type: 'handshake' };
                     mqttClient.publish(`${appSettings.networkID}/inbox/${value}`, JSON.stringify(syncNotice));
                     
@@ -699,6 +738,27 @@
             }
             renderSidebars();
             loadActiveChatFromCache();
+        }
+
+        // --- Advanced Hub Invite Generation ---
+        function promptCreateServer() {
+            const serverName = prompt("Enter a name for your new server hub:");
+            if (!serverName) return;
+            
+            // Generate clean unique alphanumeric invite key tag 
+            const inviteCode = "server-" + Math.random().toString(36).substring(2, 9) + "-" + serverName.toLowerCase().replace(/\s+/g, '-');
+            
+            appSettings.networkID = inviteCode;
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            
+            // Reset to default starting channels inside the fresh clean instance environment scope
+            groupChannels = ['general', 'gaming', 'memes'];
+            currentGroup = 'general';
+            chatHistoryCache = {};
+            
+            completeStartup();
+            
+            alert(`🎉 Server Generated!\n\nYour Invite Code is: ${inviteCode}\n\nWe have automatically loaded you into it. Give this code to friends so they can add it via their settings dashboard!`);
         }
 
         // --- Privacy Processing ---
@@ -747,34 +807,40 @@
             const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
             if (chatHistoryCache[cacheKey]) {
                 chatHistoryCache[cacheKey].forEach(msg => {
-                    appendMessageToDOM(msg.sender, msg.text);
+                    appendMessageToDOM(msg.sender, msg.text, msg.mediaUrl);
                 });
             }
         }
 
-        function appendMessageToDOM(author, text) {
+        function appendMessageToDOM(author, text, mediaUrl) {
             const container = document.getElementById('messages-container');
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
             
             const initials = author.substring(0, 2).toUpperCase();
             
+            let mediaElementHTML = '';
+            if (mediaUrl) {
+                mediaElementHTML = `<img src="${escapeHTML(mediaUrl)}" class="chat-image" alt="User attachment image file" onerror="this.style.display='none';">`;
+            }
+            
             msgDiv.innerHTML = `
                 <div class="avatar" style="background-color: ${stringToColor(author)}">${initials}</div>
                 <div class="message-content">
                     <div class="message-author">${author}</div>
-                    <div class="message-text">${escapeHTML(text)}</div>
+                    ${text ? `<div class="message-text">${escapeHTML(text)}</div>` : ''}
+                    ${mediaElementHTML}
                 </div>
             `;
             container.appendChild(msgDiv);
             container.scrollTop = container.scrollHeight;
         }
 
-        function saveMessageToCache(cacheKey, sender, text) {
+        function saveMessageToCache(cacheKey, sender, text, mediaUrl) {
             if (!chatHistoryCache[cacheKey]) {
                 chatHistoryCache[cacheKey] = [];
             }
-            chatHistoryCache[cacheKey].push({ sender, text });
+            chatHistoryCache[cacheKey].push({ sender, text, mediaUrl });
         }
 
         function handleIncomingMessage(topic, payload) {
@@ -782,7 +848,6 @@
             const type = segments[1]; 
             const target = segments[2];
 
-            // Handle incoming handshakes/invites from other users
             if (type === 'inbox' && target === appSettings.username) {
                 if (payload.type === 'handshake' && !directMessages.includes(payload.sender)) {
                     directMessages.push(payload.sender);
@@ -794,10 +859,10 @@
 
             if (type === 'servers') {
                 const cacheKey = `server_${target}`;
-                saveMessageToCache(cacheKey, payload.sender, payload.text);
+                saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
                 
                 if (currentMode === 'servers' && target === currentGroup) {
-                    appendMessageToDOM(payload.sender, payload.text);
+                    appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                 }
             } else if (type === 'dms') {
                 const combinedScope = getDMScope(payload.sender);
@@ -808,23 +873,27 @@
                     }
                     
                     const cacheKey = `dm_${payload.sender}`;
-                    saveMessageToCache(cacheKey, payload.sender, payload.text);
+                    saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
                     
                     if (currentMode === 'dms' && currentDM === payload.sender) {
-                        appendMessageToDOM(payload.sender, payload.text);
+                        appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                     }
                 }
             }
         }
 
-        function transmitMessage() {
+        function transmitMessage(forcedText = null, forcedMedia = null) {
             const input = document.getElementById('message-input');
-            const text = input.value.trim();
-            if (!text || (currentMode === 'dms' && !currentDM)) return;
+            const text = forcedText !== null ? forcedText : input.value.trim();
+            const mediaUrl = forcedMedia;
+            
+            if (!text && !mediaUrl) return;
+            if (currentMode === 'dms' && !currentDM) return;
 
             const payload = {
                 sender: appSettings.username,
                 text: text,
+                mediaUrl: mediaUrl,
                 timestamp: Date.now()
             };
 
@@ -835,12 +904,23 @@
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
                 
                 const cacheKey = `dm_${currentDM}`;
-                saveMessageToCache(cacheKey, payload.sender, payload.text);
-                appendMessageToDOM(payload.sender, payload.text);
+                saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
+                appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
             }
 
             mqttClient.publish(destinationTopic, JSON.stringify(payload));
-            input.value = '';
+            if (forcedText === null) input.value = '';
+        }
+
+        function promptAttachMedia() {
+            if (currentMode === 'dms' && !currentDM) {
+                return alert("Please select a DM contact before attaching media.");
+            }
+            const url = prompt("Paste your Image or GIF address link here:\n(Example: https://site.com/image.gif)");
+            if (!url) return;
+            
+            // Fire off directly into the stream pipeline payload interface tracking routine
+            transmitMessage("", url);
         }
 
         // --- Customization Configuration Engines ---

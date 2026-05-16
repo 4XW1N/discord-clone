@@ -227,41 +227,46 @@
             color: var(--text-normal);
         }
 
-        /* Friend Request Item Blocks */
+        /* Friend Request Item Blocks UI Layout */
         .request-item {
             background-color: #1e1f22;
-            padding: 8px;
-            border-radius: 4px;
-            margin-bottom: 6px;
-            font-size: 13px;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #383a40;
         }
 
         .request-user {
             font-weight: bold;
+            font-size: 13px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            color: var(--text-normal);
         }
 
         .request-actions {
             display: flex;
-            gap: 4px;
+            gap: 6px;
         }
 
         .req-btn {
             flex: 1;
             border: none;
-            padding: 4px;
+            padding: 6px;
             font-size: 11px;
             font-weight: bold;
-            border-radius: 3px;
+            border-radius: 4px;
             cursor: pointer;
             color: white;
+            text-align: center;
         }
 
         .req-accept { background-color: var(--success-color); }
+        .req-accept:hover { background-color: #1a7a43; }
         .req-deny { background-color: var(--danger-color); }
+        .req-deny:hover { background-color: #c93336; }
 
         .channel-item {
             padding: 10px 12px;
@@ -735,7 +740,7 @@
                 <div class="section-title" id="sidebar-section-container">
                     </div>
                 
-                <div id="friend-requests-container" style="display: none; margin-bottom: 12px; border-bottom: 1px solid #1f2023; padding-bottom: 8px;">
+                <div id="friend-requests-container" style="display: none; margin-bottom: 16px; padding: 4px;">
                     </div>
 
                 <div id="channels-container">
@@ -849,7 +854,7 @@
             blockedUsers: [],
             groupChannels: [],
             directMessages: [],
-            pendingRequests: [] // Tracks inbound user requests
+            pendingRequests: [] 
         };
 
         let chatHistoryCache = {};
@@ -931,15 +936,18 @@
                 if (appSettings.groupChannels) {
                     appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
                 }
-                // Subscribe to direct message channels
+                
+                // CRITICAL: Force immediate bidirectional synchronization for all recognized friends
                 if (appSettings.directMessages) {
-                    appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
+                    appSettings.directMessages.forEach(dm => {
+                        mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`);
+                    });
                 }
                 
-                // IMPORTANT: Subscribe to account's inbox for handshakes and friend synchronization
+                // Subscribe to your personal mailbox to catch real-time friend handshakes 
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
                 
-                // Assert exclusive single terminal device rule check
+                // Assert exclusive single terminal device device rule check
                 const identityVerificationTopic = `discord/security/lockout/${appSettings.username}`;
                 mqttClient.subscribe(identityVerificationTopic);
                 mqttClient.publish(identityVerificationTopic, JSON.stringify({ activeToken: mySessionID }));
@@ -978,14 +986,14 @@
 
                     handleIncomingMessage(topic, payload);
                 } catch (e) {
-                    console.error("Payload execution error:", e);
+                    console.error("Payload execution trace failure:", e);
                 }
             });
         }
 
-        // Standardized across endpoints so users resolve to the same channel name regardless of who logs in first
+        // CRITICAL SYMMETRY FIX: Generates an identical channel name regardless of who logs in first.
         function getDMScope(targetUser) {
-            const combinedString = [appSettings.username, targetUser].sort().join("_to_");
+            const combinedString = [appSettings.username, targetUser].sort().join("_and_");
             return combinedString;
         }
 
@@ -1064,7 +1072,7 @@
                     <button class="add-friend-action-btn" onclick="sendFriendRequestPrompt()">➕ Add Friend</button>
                 `;
 
-                // Handle Pending Invitations UI Frame
+                // Render Active Pending Inbound Requests Section Frame
                 if (appSettings.pendingRequests && appSettings.pendingRequests.length > 0) {
                     requestsContainer.style.display = 'block';
                     const listHeader = document.createElement('div');
@@ -1122,34 +1130,37 @@
             }
         }
 
-        // --- Core Friend and DM Sync Functions ---
+        // --- Core Friend and DM Sync Handshake Engine ---
         function sendFriendRequestPrompt() {
             if (!appSettings.networkID) return;
             const targetUser = prompt("Enter target friend's exact username:").trim().toLowerCase().replace(/\s+/g, '-');
             if (!targetUser || targetUser === appSettings.username) return;
 
             if (appSettings.directMessages.includes(targetUser)) {
-                alert("This user is already in your direct message list!");
+                alert("This user is already your friend!");
                 return;
             }
 
-            // Send standard peer-to-peer invitation via their inbox subscription tree
+            // Immediately register tracking variables and send out the network handshake request
             if (mqttClient && mqttClient.connected) {
+                // Subscribe to the shared path beforehand to prepare for their acceptance response
+                mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(targetUser)}`);
+                
                 mqttClient.publish(`${appSettings.networkID}/inbox/${targetUser}`, JSON.stringify({
                     sender: appSettings.username,
                     type: 'friend_handshake'
                 }));
-                alert(`Friend request transmitted to "${targetUser}"! They will see it in their sidebar panel when they log in.`);
+                alert(`Friend request sent to "${targetUser}"! It will instantly appear in their sidebar.`);
             } else {
-                alert("Network error. Reconnect and try again.");
+                alert("Network offline. Tap the status icon to reconnect.");
             }
         }
 
         function acceptFriendRequest(senderName) {
-            // Strip from pending array
+            // Strip from pending array tracking log
             appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
             
-            // Append to local listing
+            // Append symmetrically to active messaging links
             if (!appSettings.directMessages.includes(senderName)) {
                 appSettings.directMessages.push(senderName);
             }
@@ -1157,10 +1168,10 @@
             localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
 
             if (mqttClient) {
-                // Subscribe to mutual communication line channel
+                // Bind mutual communication stream addresses
                 mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(senderName)}`);
                 
-                // Confirm callback acceptance back to their structural thread inbox so they synchronize instantly
+                // Signal back acceptance so their user profile can reflect the channel update instantly
                 mqttClient.publish(`${appSettings.networkID}/inbox/${senderName}`, JSON.stringify({
                     sender: appSettings.username,
                     type: 'friend_accepted'
@@ -1348,7 +1359,7 @@
             const type = segments[1]; 
             const target = segments[2];
 
-            // Core Inbox Handler Pipeline
+            // Inbound Pipeline Command Handler 
             if (type === 'inbox' && target === appSettings.username) {
                 if (payload.type === 'friend_handshake') {
                     if (!appSettings.directMessages.includes(payload.sender) && !appSettings.pendingRequests.includes(payload.sender)) {
@@ -1374,6 +1385,7 @@
                     appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
                 }
             } else if (type === 'dms') {
+                // Ensure message belongs to the active symmetrical channel pairing
                 if (target === getDMScope(payload.sender)) {
                     const cacheKey = `dm_${payload.sender}`;
                     saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
@@ -1386,7 +1398,7 @@
 
         function transmitMessage(forcedText = null, forcedMedia = null) {
             if (!mqttClient || mqttClient.connected === false) {
-                alert("Offline. Reconnecting...");
+                alert("Offline. Reconnecting tracking logs...");
                 return;
             }
             const input = document.getElementById('message-input');
@@ -1404,7 +1416,7 @@
                 destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
             } else {
                 destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
-                // Save and reflect locally immediately for rapid UI updates
+                // Instantly log message locally for near-zero UI latency response
                 saveMessageToCache(`dm_${currentDM}`, payload.sender, payload.text, payload.mediaUrl);
                 appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
             }
@@ -1499,7 +1511,7 @@
             if (e.key === 'Enter') transmitMessage();
         });
 
-        // Parse Local cache on bootstrap
+        // Initialize and clean tracking variables on startup
         const cached = localStorage.getItem('discord_clone_user');
         if (cached) {
             const parsed = JSON.parse(cached);

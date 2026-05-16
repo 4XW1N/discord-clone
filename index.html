@@ -105,7 +105,7 @@
             align-items: center;
             padding-top: 12px;
             gap: 8px;
-            z-index: 10;
+            z-index: 20; /* Fixed layer stacking hierarchy */
         }
 
         .server-icon {
@@ -146,7 +146,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            z-index: 9;
+            z-index: 15; /* Ensures sidebar panels layout sits correctly */
         }
 
         .sidebar-header {
@@ -195,7 +195,7 @@
             margin-bottom: 4px;
             color: var(--text-muted);
             font-size: 15px;
-            min-height: 44px;
+            min-height: 44px; /* Touch target standard */
         }
 
         .channel-item:hover, .channel-item.active {
@@ -209,18 +209,21 @@
 
         /* User Profile Footer */
         .user-footer {
-            height: 52px;
+            height: 56px;
             background-color: #232428;
             display: flex;
             align-items: center;
             padding: 0 12px;
             justify-content: space-between;
+            position: relative;
+            z-index: 30; /* Stays above sliding view containers */
         }
 
         .user-info {
             display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
 
         .avatar {
@@ -240,7 +243,7 @@
         .username-display {
             font-size: 14px;
             font-weight: 600;
-            max-width: 120px;
+            max-width: 110px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -250,9 +253,14 @@
             cursor: pointer;
             background: none;
             border: none;
-            color: var(--text-muted);
-            font-size: 20px;
-            padding: 4px;
+            color: var(--text-normal);
+            font-size: 22px;
+            padding: 8px;
+            min-height: 44px;
+            min-width: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         /* Main Chat Area */
@@ -262,6 +270,7 @@
             flex-direction: column;
             background-color: var(--bg-primary);
             width: 100%;
+            min-width: 0;
         }
 
         .chat-header {
@@ -278,6 +287,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
 
         .mobile-nav-toggle {
@@ -288,7 +298,9 @@
             font-size: 22px;
             cursor: pointer;
             margin-right: 8px;
-            padding: 4px;
+            padding: 8px;
+            min-height: 44px;
+            min-width: 44px;
         }
 
         .network-status {
@@ -298,6 +310,7 @@
             background-color: var(--danger-color);
             color: white;
             font-weight: normal;
+            flex-shrink: 0;
         }
 
         .messages-container {
@@ -317,6 +330,7 @@
         .message-content {
             display: flex;
             flex-direction: column;
+            min-width: 0;
         }
 
         .message-author {
@@ -395,7 +409,7 @@
             width: 100vw;
             height: 100vh;
             background-color: var(--bg-primary);
-            z-index: 100;
+            z-index: 500; /* Must overlay mobile bars securely */
             padding: 40px 20px;
             overflow-y: auto;
         }
@@ -505,6 +519,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
+            z-index: 550;
         }
 
         /* Mobile Backdrop Overlay */
@@ -515,8 +530,8 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 5;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 10;
         }
 
         /* Mobile Layout Viewport Breakpoint rules */
@@ -530,18 +545,17 @@
                 top: 0;
                 left: -72px;
                 height: 100vh;
-                transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transition: left 0.25s ease-out;
             }
 
             .sidebar {
                 position: fixed;
                 top: 0;
-                left: -312px; /* 240px + 72px server bar space offset */
+                left: -312px; 
                 height: 100vh;
-                transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transition: left 0.25s ease-out;
             }
 
-            /* Shift menu elements outward when navigation is opened */
             body.nav-open .servers-bar {
                 left: 0;
             }
@@ -555,7 +569,7 @@
             }
             
             .network-status {
-                max-width: 90px;
+                max-width: 95px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -583,7 +597,7 @@
     </div>
 
     <div class="sidebar">
-        <div>
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
             <div class="sidebar-header" id="sidebar-header-title" data-server-display="No Server Selected">No Server Selected</div>
             <div class="channel-list">
                 <div class="section-title">
@@ -626,7 +640,7 @@
             <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: block; margin: 0;">☰ Menu</button>
         </div>
         <h3 id="fallback-main-title">No Server Configured</h3>
-        <p id="fallback-sub-text">Click the green "+" button on the far left to construct or enter an invite code.</p>
+        <p id="fallback-sub-text">Click the green "+" button on the far left or open the menu drawer to build/join an environment link.</p>
     </div>
 
     <div class="overlay" id="settings-overlay">
@@ -744,7 +758,9 @@
         
         function initNetwork() {
             const statusBadge = document.getElementById('net-status-badge');
-            if(mqttClient) mqttClient.end();
+            if(mqttClient) {
+                try { mqttClient.end(); } catch(e) { console.log(e); }
+            }
             
             if (!appSettings.networkID) {
                 if (statusBadge) {
@@ -759,7 +775,13 @@
                 statusBadge.style.backgroundColor = "var(--danger-color)";
             }
 
-            mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+            // Enhanced connection flags to prevent dropped packets on dynamic networks
+            mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+                keepalive: 30,
+                reconnectPeriod: 1000,
+                connectTimeout: 30 * 1000,
+                clean: true
+            });
 
             mqttClient.on('connect', () => {
                 if (statusBadge) {
@@ -767,15 +789,24 @@
                     statusBadge.style.backgroundColor = "var(--success-color)";
                 }
                 
-                appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`));
-                appSettings.directMessages.forEach(dm => mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`));
+                // Resubscribe cleanly to core topics
+                if (appSettings.groupChannels) {
+                    appSettings.groupChannels.forEach(ch => {
+                        mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`);
+                    });
+                }
+                if (appSettings.directMessages) {
+                    appSettings.directMessages.forEach(dm => {
+                        mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`);
+                    });
+                }
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`);
             });
 
             mqttClient.on('error', (err) => {
                 console.error("Network interface error:", err);
                 if (statusBadge) {
-                    statusBadge.innerText = "Error Connecting";
+                    statusBadge.innerText = "Error";
                     statusBadge.style.backgroundColor = "var(--danger-color)";
                 }
             });
@@ -783,7 +814,7 @@
             mqttClient.on('message', (topic, message) => {
                 try {
                     const payload = JSON.parse(message.toString());
-                    if (appSettings.blockedUsers.includes(payload.sender)) return; 
+                    if (appSettings.blockedUsers && appSettings.blockedUsers.includes(payload.sender)) return; 
                     handleIncomingMessage(topic, payload);
                 } catch (e) {
                     console.error("Payload tracking failure:", e);
@@ -817,18 +848,16 @@
                 
                 if (!appSettings.networkID) {
                     titleElement.innerText = "No Server Selected";
-                    titleElement.setAttribute('data-server-display', "No Server Selected");
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     document.getElementById('fallback-main-title').innerText = "No Server Hook Active";
-                    document.getElementById('fallback-sub-text').innerText = "Open the menu & click the green '+' button to generate or join an active network.";
+                    document.getElementById('fallback-sub-text').innerText = "Open the menu drawer to build or input an environment network.";
                     document.getElementById('sidebar-add-target-btn').style.display = 'none';
                     return;
                 }
 
                 const cleanName = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "CUSTOM HUB";
                 titleElement.innerText = cleanName;
-                titleElement.setAttribute('data-server-display', cleanName);
 
                 document.getElementById('sidebar-add-target-btn').style.display = 'inline';
 
@@ -844,7 +873,7 @@
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     document.getElementById('fallback-main-title').innerText = "Empty Server Workspace";
-                    document.getElementById('fallback-sub-text').innerText = "This server layout has no text channels yet. Click the '+' next to Channels above to build one!";
+                    document.getElementById('fallback-sub-text').innerText = "This server layout has no channels. Click '+' to add one.";
                 }
 
                 appSettings.groupChannels.forEach(channel => {
@@ -855,13 +884,12 @@
                         currentGroup = channel; 
                         renderSidebars(); 
                         loadActiveChatFromCache();
-                        toggleMobileNav(false); // Auto close sidebar layout upon viewport channel select
+                        toggleMobileNav(false); 
                     };
                     container.appendChild(div);
                 });
             } else {
                 titleElement.innerText = "Direct Messages";
-                titleElement.setAttribute('data-server-display', "Direct Messages");
                 sectionLabel.innerText = "Conversations";
                 if(sym) sym.innerText = "@";
                 document.getElementById('sidebar-add-target-btn').style.display = appSettings.networkID ? 'inline' : 'none';
@@ -870,7 +898,7 @@
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     document.getElementById('fallback-main-title').innerText = "DMs Disabled";
-                    document.getElementById('fallback-sub-text').innerText = "You must configure or connect to a custom server environment hub first before sending direct messages.";
+                    document.getElementById('fallback-sub-text').innerText = "Configure a custom server link before initializing direct threads.";
                     return;
                 }
 
@@ -882,7 +910,7 @@
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     document.getElementById('fallback-main-title').innerText = "Direct Message Terminal";
-                    document.getElementById('fallback-sub-text').innerText = "Click the '+' button next to Conversations to start a private connection with an active user.";
+                    document.getElementById('fallback-sub-text').innerText = "Click the '+' button next to Conversations to start a private connection.";
                 }
 
                 appSettings.directMessages.forEach(dm => {
@@ -969,7 +997,7 @@
             toggleMobileNav(false);
             
             if (option.toUpperCase() === 'CREATE') {
-                alert(`🎉 Server Hook Created!\n\nYour Invite Code is:\n${appSettings.networkID}\n\nShare this invite text code with friends so they can input it into their client and connect!`);
+                alert(`🎉 Server Hook Created!\n\nYour Invite Code is:\n${appSettings.networkID}\n\nShare this code with friends so they can join!`);
             }
         }
 
@@ -1139,7 +1167,7 @@
             if (currentMode === 'dms' && !currentDM) return alert("Select a friend before sending images.");
             if (currentMode === 'servers' && !currentGroup) return alert("Select a text channel before sending images.");
             
-            const url = prompt("Paste your Image or GIF address link here:\n(Example: https://site.com/image.gif)");
+            const url = prompt("Paste your Image or GIF address link here:");
             if (!url) return;
             
             transmitMessage("", url);
@@ -1151,6 +1179,7 @@
             if(open) toggleMobileNav(false);
         }
 
+        // Corrects profile binding & fires an active client connection reset instantly
         function updateProfile() {
             const newName = document.getElementById('input-username').value.trim().replace(/\s+/g, '-');
             if(newName) {
@@ -1211,6 +1240,7 @@
             }
         }
 
+        // --- Utility Methods ---
         function stringToColor(str) {
             let hash = 0;
             for (let i = 0; i < str.length; i++) {

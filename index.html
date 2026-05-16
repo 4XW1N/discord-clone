@@ -189,20 +189,43 @@
         }
 
         .section-title {
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
             font-weight: bold;
             color: var(--text-muted);
-            margin: 16px 0 4px 8px;
+            margin: 16px 0 6px 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            letter-spacing: 0.5px;
         }
 
-        .add-btn {
+        .add-friend-action-btn {
+            background-color: var(--success-color);
+            color: white;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+            text-transform: none;
+            transition: opacity 0.2s;
+        }
+
+        .add-friend-action-btn:hover {
+            opacity: 0.9;
+        }
+
+        .add-channel-action-btn {
             cursor: pointer;
             font-size: 18px;
-            padding: 4px 8px;
+            padding: 0 6px;
+            color: var(--text-muted);
+        }
+
+        .add-channel-action-btn:hover {
+            color: var(--text-normal);
         }
 
         .channel-item {
@@ -674,10 +697,8 @@
         <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
             <div class="sidebar-header" id="sidebar-header-title">No Server Selected</div>
             <div class="channel-list">
-                <div class="section-title">
-                    <span id="section-label">Channels</span>
-                    <span class="add-btn" id="sidebar-add-target-btn" onclick="createNewTarget()">+</span>
-                </div>
+                <div class="section-title" id="sidebar-section-container">
+                    </div>
                 <div id="channels-container">
                     </div>
             </div>
@@ -934,7 +955,7 @@
         function renderSidebars() {
             const container = document.getElementById('channels-container');
             const titleElement = document.getElementById('sidebar-header-title');
-            const sectionLabel = document.getElementById('section-label');
+            const sectionContainer = document.getElementById('sidebar-section-container');
             const sym = document.getElementById('chat-header-symbol');
             const nameHeader = document.getElementById('chat-header-name');
             const chatPane = document.getElementById('chat-area-pane');
@@ -944,19 +965,23 @@
             if (document.getElementById('input-app-id')) document.getElementById('input-app-id').value = appSettings.networkID;
 
             if (currentMode === 'servers') {
-                sectionLabel.innerText = "Text Channels";
+                // Header display setting for server view channel creations
+                sectionContainer.innerHTML = `
+                    <span>Text Channels</span>
+                    <span class="add-channel-action-btn" onclick="createNewTarget()">+</span>
+                `;
+                
                 if(sym) sym.innerText = "#";
                 
                 if (!appSettings.networkID) {
                     titleElement.innerText = "No Server Selected";
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
-                    document.getElementById('sidebar-add-target-btn').style.display = 'none';
+                    sectionContainer.innerHTML = '<span>Channels</span>';
                     return;
                 }
 
                 titleElement.innerText = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "SERVER CHANNELS";
-                document.getElementById('sidebar-add-target-btn').style.display = 'inline';
 
                 if (!currentGroup && appSettings.groupChannels.length > 0) currentGroup = appSettings.groupChannels[0];
 
@@ -982,16 +1007,21 @@
                     container.appendChild(div);
                 });
             } else {
+                // Explicitly show the interactive friend-making button
                 titleElement.innerText = "Friends & DMs";
-                sectionLabel.innerText = "Friends List";
                 if(sym) sym.innerText = "@";
-                document.getElementById('sidebar-add-target-btn').style.display = appSettings.networkID ? 'inline' : 'none';
 
                 if (!appSettings.networkID) {
+                    sectionContainer.innerHTML = '<span>Friends List</span>';
                     chatPane.style.display = 'none';
                     fallbackPane.style.display = 'flex';
                     return;
                 }
+
+                sectionContainer.innerHTML = `
+                    <span>Friends List</span>
+                    <button class="add-friend-action-btn" onclick="createNewTarget()">➕ Add Friend</button>
+                `;
 
                 if (currentDM) {
                     chatPane.style.display = 'flex';
@@ -1279,6 +1309,7 @@
             if (forcedText === null && input) input.value = '';
         }
 
+        // Send images
         function promptAttachMedia() {
             const url = prompt("Paste your Image Address link:");
             if (url) transmitMessage("", url);

@@ -1,35 +1,1507 @@
-function promptCreateServer() {
-    const rawOption = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code:");
-    // If they hit Cancel, rawOption is null. Exit safely!
-    if (rawOption === null) return; 
-    
-    const option = rawOption.trim();
-    if (!option) return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Discord Lite Mobile Ultimate</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #313338;
+            --bg-sidebar: #2b2d31;
+            --bg-servers: #1e1f22;
+            --text-normal: #dbdee1;
+            --text-muted: #949ba4;
+            --brand-color: #5865f2;
+            --success-color: #23a55a;
+            --danger-color: #f23f43;
+            --input-bg: #383a40;
+        }
 
-    if (option.toUpperCase() === 'CREATE') {
-        const serverName = prompt("Enter server hub name:");
-        if (serverName === null) return; // Safe exit on cancel
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-primary);
+            position: fixed; /* Prevents bounce scroll layout breaking on mobile iOS */
+        }
+
+        body {
+            display: flex;
+            color: var(--text-normal);
+            position: relative;
+        }
+
+        /* Access Terminal Overlay */
+        #login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #1e1f22;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-box {
+            background-color: #313338;
+            padding: 32px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-box h2 {
+            margin-bottom: 8px;
+            font-size: 24px;
+        }
+
+        .login-box p {
+            color: var(--text-muted);
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            background-color: #383a40;
+            border: 1px solid #1e1f22;
+            border-radius: 4px;
+            color: white;
+            font-size: 16px;
+            margin-bottom: 14px;
+            outline: none;
+        }
+
+        .login-box button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--brand-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        /* Navigation Matrix Bar */
+        .servers-bar {
+            width: 72px;
+            height: 100%;
+            background-color: var(--bg-servers);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 12px;
+            gap: 8px;
+            z-index: 30;
+            flex-shrink: 0;
+        }
+
+        .server-icon {
+            width: 48px;
+            height: 48px;
+            background-color: var(--bg-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-normal);
+            font-size: 18px;
+        }
+
+        .server-icon:hover, .server-icon.active {
+            border-radius: 30%;
+            background-color: var(--brand-color);
+            color: white;
+        }
+
+        .add-server-btn {
+            background-color: #2b2d31;
+            color: var(--success-color);
+        }
+
+        .add-server-btn:hover {
+            background-color: var(--success-color) !important;
+            color: white !important;
+        }
+
+        .server-settings-btn {
+            background-color: #2b2d31;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
         
-        const cleanName = serverName.trim();
-        if (!cleanName) return;
+        .server-settings-btn:hover {
+            background-color: #404249;
+            color: white;
+            border-radius: 30%;
+        }
+
+        /* Structural Navigation Panel */
+        .sidebar {
+            width: 240px;
+            height: 100%;
+            background-color: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            z-index: 25;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            height: 48px;
+            border-bottom: 1px solid #1f2023;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            font-weight: bold;
+            font-size: 15px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .channel-list {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: var(--text-muted);
+            margin: 14px 0 6px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            letter-spacing: 0.5px;
+        }
+
+        .add-friend-action-btn {
+            background-color: var(--brand-color);
+            color: white;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+        }
+
+        .add-channel-action-btn {
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0 6px;
+            color: var(--text-muted);
+        }
+
+        /* Persistent Inbound Request Elements */
+        .request-item {
+            background-color: #1e1f22;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border: 1px solid var(--brand-color);
+        }
+
+        .request-user {
+            font-weight: bold;
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-bottom: 6px;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .req-btn {
+            flex: 1;
+            border: none;
+            padding: 6px;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            color: white;
+            text-align: center;
+        }
+
+        .req-accept { background-color: var(--success-color); }
+        .req-deny { background-color: var(--danger-color); }
+
+        .channel-item {
+            padding: 10px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
+            color: var(--text-muted);
+            font-size: 15px;
+            min-height: 44px;
+        }
+
+        .channel-item div {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .channel-item:hover, .channel-item.active {
+            background-color: #35373c;
+            color: var(--text-normal);
+        }
+
+        .channel-item.active {
+            background-color: #404249;
+        }
+
+        .remove-dm-btn {
+            font-size: 18px;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .remove-dm-btn:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        /* Footer Dashboard Context */
+        .user-footer {
+            height: 56px;
+            background-color: #232428;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: var(--brand-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .username-display {
+            font-size: 14px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Communication Node Workspace */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-primary);
+            height: 100%;
+            min-width: 0;
+        }
+
+        .chat-header {
+            height: 48px;
+            border-bottom: 1px solid #1f2023;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .header-right-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .reset-chat-btn {
+            background-color: #2b2d31;
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .network-status {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            background-color: var(--danger-color);
+            color: white;
+            cursor: pointer;
+        }
+
+        .mobile-nav-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-normal);
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            -webkit-overflow-scrolling: touch; /* Smooth momentum scroll on iOS */
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+        }
+
+        .message-content {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .message-author {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .message-text {
+            font-size: 15px;
+            word-break: break-word;
+        }
+
+        .chat-image {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            margin-top: 8px;
+            display: block;
+            object-fit: contain;
+        }
+
+        .input-area {
+            padding: 0 16px 16px 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            background-color: var(--bg-primary);
+            flex-shrink: 0;
+        }
+
+        .media-btn {
+            background-color: var(--input-bg);
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            padding: 0 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 0 14px;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--input-bg);
+            color: var(--text-normal);
+            font-size: 15px;
+            outline: none;
+            min-height: 44px;
+        }
+
+        .no-chat-fallback {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 20px;
+            height: 100%;
+        }
+
+        .no-chat-fallback h3 {
+            margin-bottom: 8px;
+            color: var(--text-normal);
+        }
+
+        /* Options Panel Interface */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-primary);
+            z-index: 500;
+            padding: 60px 20px 20px 20px;
+            overflow-y: auto;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        @media (min-width: 768px) {
+            .settings-grid {
+                grid-template-columns: 200px 1fr;
+                max-width: 1000px;
+            }
+        }
+
+        .settings-sidebar h3 {
+            margin-bottom: 12px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .settings-content h2 {
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--text-muted);
+            padding-bottom: 8px;
+            font-size: 20px;
+        }
+
+        .setting-group {
+            margin-bottom: 24px;
+        }
+
+        .setting-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .setting-group input, .setting-group select {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--input-bg);
+            border: 1px solid #1e1f22;
+            border-radius: 4px;
+            color: var(--text-normal);
+            font-size: 15px;
+            outline: none;
+        }
+
+        .privacy-flex {
+            display: flex;
+            gap: 8px;
+        }
+
+        .privacy-flex input {
+            flex: 1;
+        }
+
+        .privacy-btn {
+            padding: 0 16px;
+            background-color: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            min-height: 44px;
+        }
+
+        .blocked-list-ui {
+            margin-top: 12px;
+            background-color: var(--bg-sidebar);
+            border-radius: 4px;
+            padding: 8px;
+        }
+
+        .blocked-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 8px;
+            border-bottom: 1px solid #1e1f22;
+        }
+
+        .unblock-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .close-settings {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background-color: transparent;
+            border: 2px solid var(--text-muted);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            z-index: 550;
+        }
+
+        .mobile-sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 10;
+        }
+
+        @media (max-width: 767px) {
+            .mobile-nav-toggle {
+                display: flex;
+            }
+
+            .servers-bar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+            }
+
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 72px; 
+                width: calc(100% - 72px);
+                height: 100%;
+                transition: transform 0.25s ease-out;
+                transform: translateX(0);
+            }
+
+            body.nav-closed .sidebar {
+                transform: translateX(-100%);
+                pointer-events: none;
+            }
+            body.nav-closed .mobile-sidebar-backdrop {
+                display: none;
+            }
+            body.nav-open .mobile-sidebar-backdrop {
+                display: block;
+                left: 72px;
+                width: calc(100% - 72px);
+            }
+
+            .chat-area, .no-chat-fallback {
+                position: absolute;
+                top: 0;
+                left: 72px;
+                width: calc(100% - 72px);
+                height: 100%;
+                z-index: 5;
+            }
+        }
+    </style>
+</head>
+<body class="nav-closed">
+
+    <div class="mobile-sidebar-backdrop" onclick="toggleMobileNav(false)"></div>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>Sign In / Register</h2>
+            <p>Enter an account to sync messages securely.</p>
+            <input type="text" id="login-username" placeholder="Username" autocomplete="off">
+            <input type="password" id="login-password" placeholder="Password">
+            <button onclick="handleLogin()">Connect Securely</button>
+        </div>
+    </div>
+
+    <div class="servers-bar">
+        <div class="server-icon active" id="server-view-btn" onclick="switchView('servers')" title="Group Servers">💬</div>
+        <div class="server-icon" id="dm-view-btn" onclick="switchView('dms')" title="Direct Messages / Friends">👤</div>
+        <div class="server-icon add-server-btn" onclick="promptCreateServer()" title="Create/Join Server Hub">+</div>
+        <div class="server-icon server-settings-btn" onclick="toggleSettings(true)" title="App Settings">⚙️</div>
+    </div>
+
+    <div class="sidebar">
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+            <div class="sidebar-header" id="sidebar-header-title">No Server Selected</div>
+            <div class="channel-list">
+                <div class="section-title" id="sidebar-section-container"></div>
+                
+                <div id="friend-requests-container" style="display: none; margin-bottom: 16px; padding: 4px;"></div>
+
+                <div id="channels-container"></div>
+            </div>
+        </div>
+
+        <div class="user-footer">
+            <div class="user-info">
+                <div class="avatar" id="user-avatar">U</div>
+                <div class="username-display" id="user-name-display">Username</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-area" id="chat-area-pane" style="display: none;">
+        <div class="chat-header">
+            <div class="header-left">
+                <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)">☰ Channels</button>
+                <span id="chat-header-symbol">#</span>
+                <span id="chat-header-name">general</span>
+            </div>
+            <div class="header-right-actions">
+                <button class="reset-chat-btn" onclick="confirmResetChat()">🗑️ Reset</button>
+                <div class="network-status" id="net-status-badge" onclick="initNetwork()">Connecting...</div>
+            </div>
+        </div>
+        <div class="messages-container" id="messages-container"></div>
+        <div class="input-area">
+            <button class="media-btn" onclick="promptAttachMedia()">📁</button>
+            <input type="text" class="message-input" id="message-input" placeholder="Message..." autocomplete="off">
+        </div>
+    </div>
+
+    <div class="no-chat-fallback" id="chat-area-fallback">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <button class="mobile-nav-toggle" onclick="toggleMobileNav(true)" style="display: flex; background: var(--input-bg); border-radius: 6px; font-size: 15px; padding: 6px 12px;">☰ Open Channels List</button>
+        </div>
+        <h3 id="fallback-main-title">No Server Configured</h3>
+        <p id="fallback-sub-text">Tap the green "+" icon on the left bar to build or link an invite token environment.</p>
+    </div>
+
+    <div class="overlay" id="settings-overlay">
+        <button class="close-settings" onclick="toggleSettings(false)">ESC</button>
+        <div class="settings-grid">
+            <div class="settings-sidebar">
+                <h3>User Settings</h3>
+                <p style="font-weight:bold; color:var(--brand-color); margin-bottom: 16px;">App Configuration</p>
+                <button onclick="handleLogout()" style="background:none; border:none; color:var(--danger-color); cursor:pointer; font-weight:bold; padding: 8px 0; font-size: 16px;">Log Out</button>
+            </div>
+            <div class="settings-content">
+                <h2>User Profile Settings (Lock Enabled)</h2>
+                
+                <div class="setting-group">
+                    <label>Username</label>
+                    <input type="text" id="input-username" readonly style="opacity: 0.6; cursor: not-allowed;">
+                </div>
+
+                <div class="setting-group">
+                    <label for="select-theme">Theme Profile</label>
+                    <select id="select-theme" onchange="updateAccessibility()">
+                        <option value="dark">Discord Dark</option>
+                        <option value="light">Classic Light</option>
+                        <option value="amoled">High Contrast AMOLED Black</option>
+                        <option value="deuteranopia">Colorblind Assist</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label for="input-font-size">Text Scale</label>
+                    <select id="input-font-size" onchange="updateAccessibility()">
+                        <option value="14px">Small (14px)</option>
+                        <option value="16px" selected>Normal (16px)</option>
+                        <option value="20px">Large (20px)</option>
+                        <option value="24px">Extra Large (24px)</option>
+                    </select>
+                </div>
+                
+                <div class="setting-group">
+                    <label for="input-app-id">Server Invite Code</label>
+                    <input type="text" id="input-app-id" onchange="updateNetworkID()">
+                </div>
+
+                <h2>Privacy (Block Layout)</h2>
+                <div class="setting-group">
+                    <label for="privacy-username">Block / Ignore User</label>
+                    <div class="privacy-flex">
+                        <input type="text" id="privacy-username" placeholder="Type a username to block...">
+                        <button class="privacy-btn" onclick="blockUser()">Block</button>
+                    </div>
+                    <div class="blocked-list-ui" id="blocked-list-ui"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Core Context Memory Objects ---
+        let currentMode = 'servers'; 
+        let currentGroup = '';
+        let currentDM = '';
+        const mySessionID = Math.random().toString(36).substring(2, 15);
         
-        appSettings.networkID = "server-" + Math.random().toString(36).substring(2, 9) + "-" + cleanName.toLowerCase().replace(/\s+/g, '-');
-        appSettings.groupChannels = ['general', 'gaming'];
-        appSettings.directMessages = [];
-        appSettings.pendingRequests = [];
-        currentGroup = 'general';
-        currentDM = '';
-    } else {
-        appSettings.networkID = option;
-        appSettings.groupChannels = ['general']; 
-        appSettings.directMessages = [];
-        appSettings.pendingRequests = [];
-        currentGroup = 'general';
-        currentDM = '';
-    }
-    
-    localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
-    loadCacheFromLocalStorage();
-    completeStartup();
-    toggleMobileNav(false);
-}
+        let appSettings = {
+            username: '',
+            passwordHash: '', 
+            theme: 'dark',
+            fontSize: '16px',
+            networkID: '', 
+            blockedUsers: [],
+            groupChannels: [],
+            directMessages: [],
+            pendingRequests: [] 
+        };
+
+        let chatHistoryCache = {};
+
+        function toggleMobileNav(isOpen) {
+            if (isOpen) {
+                document.body.classList.remove('nav-closed');
+                document.body.classList.add('nav-open');
+            } else {
+                document.body.classList.remove('nav-open');
+                document.body.classList.add('nav-closed');
+            }
+        }
+
+        function saveCacheToLocalStorage() {
+            localStorage.setItem(`discord_history_${appSettings.networkID || 'global'}`, JSON.stringify(chatHistoryCache));
+        }
+
+        function loadCacheFromLocalStorage() {
+            const storedHistory = localStorage.getItem(`discord_history_${appSettings.networkID || 'global'}`);
+            chatHistoryCache = storedHistory ? JSON.parse(storedHistory) : {};
+        }
+
+        function handleLogin() {
+            const nameInput = document.getElementById('login-username').value.trim().replace(/\s+/g, '-').toLowerCase();
+            const passInput = document.getElementById('login-password').value.trim();
+            
+            if (!nameInput || !passInput) return alert('Provide credentials to initialize session link.');
+
+            appSettings.username = nameInput;
+            appSettings.passwordHash = btoa(passInput); 
+            
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            document.getElementById('login-screen').style.display = 'none';
+            completeStartup();
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('discord_clone_user');
+            window.location.reload();
+        }
+
+        // --- Persistent Web Connection Controller Matrix ---
+        let mqttClient;
+        
+        function initNetwork() {
+            const statusBadge = document.getElementById('net-status-badge');
+            if(mqttClient) {
+                try { mqttClient.end(); } catch(e) {}
+            }
+            
+            if (!appSettings.networkID) {
+                if (statusBadge) {
+                    statusBadge.innerText = "No Link";
+                    statusBadge.style.backgroundColor = "var(--danger-color)";
+                }
+                return;
+            }
+
+            if (statusBadge) {
+                statusBadge.innerText = "Connecting...";
+                statusBadge.style.backgroundColor = "var(--danger-color)";
+            }
+
+            mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+                keepalive: 10, // Catch mobile background connection drops quickly
+                reconnectPeriod: 1000,
+                connectTimeout: 10 * 1000,
+                clean: false, 
+                clientId: 'disc_cl_' + appSettings.username + '_' + Math.random().toString(16).substring(2,6)
+            });
+
+            mqttClient.on('connect', () => {
+                if (statusBadge) {
+                    statusBadge.innerText = "Connected";
+                    statusBadge.style.backgroundColor = "var(--success-color)";
+                }
+                
+                // Subscribe to Server Channels
+                if (appSettings.groupChannels) {
+                    appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`, { qos: 1 }));
+                }
+                
+                // Subscribe to Symmetrical DM Nodes
+                if (appSettings.directMessages) {
+                    appSettings.directMessages.forEach(dm => {
+                        mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`, { qos: 1 });
+                    });
+                }
+                
+                // Subscribe to Private Mailbox Pipeline Node
+                mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`, { qos: 1 });
+            });
+
+            mqttClient.on('close', () => {
+                if (statusBadge) {
+                    statusBadge.innerText = "Offline";
+                    statusBadge.style.backgroundColor = "var(--danger-color)";
+                }
+            });
+
+            mqttClient.on('message', (topic, message) => {
+                try {
+                    const payload = JSON.parse(message.toString());
+
+                    if (appSettings.blockedUsers && appSettings.blockedUsers.includes(payload.sender)) return; 
+                    
+                    if (payload.type === 'remote_wipe_command') {
+                        const cacheKey = payload.mode === 'servers' ? `server_${payload.target}` : `dm_${payload.target}`;
+                        chatHistoryCache[cacheKey] = [];
+                        saveCacheToLocalStorage();
+                        if ((currentMode === 'servers' && currentGroup === payload.target) || (currentMode === 'dms' && currentDM === payload.target)) {
+                            clearChatUI();
+                        }
+                        return;
+                    }
+
+                    handleIncomingMessage(topic, payload);
+                } catch (e) {
+                    console.error("Transmission state execution exception:", e);
+                }
+            });
+        }
+
+        // MOBILE RECONNECT LAYER: Monitors phone sleep wake-ups and active browser tab shifts
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                if (!mqttClient || !mqttClient.connected) {
+                    initNetwork();
+                }
+            }
+        });
+
+        function getDMScope(targetUser) {
+            return [appSettings.username, targetUser].sort().join("_and_");
+        }
+
+        // --- Synchronization Renderer Interfaces ---
+        function renderSidebars() {
+            const container = document.getElementById('channels-container');
+            const requestsContainer = document.getElementById('friend-requests-container');
+            const titleElement = document.getElementById('sidebar-header-title');
+            const sectionContainer = document.getElementById('sidebar-section-container');
+            const sym = document.getElementById('chat-header-symbol');
+            const nameHeader = document.getElementById('chat-header-name');
+            const chatPane = document.getElementById('chat-area-pane');
+            const fallbackPane = document.getElementById('chat-area-fallback');
+
+            container.innerHTML = '';
+            requestsContainer.innerHTML = '';
+            
+            if (document.getElementById('input-app-id')) document.getElementById('input-app-id').value = appSettings.networkID;
+
+            if (currentMode === 'servers') {
+                requestsContainer.style.display = 'none';
+                sectionContainer.innerHTML = `
+                    <span>Text Channels</span>
+                    <span class="add-channel-action-btn" onclick="createNewChannel()">+</span>
+                `;
+                
+                if(sym) sym.innerText = "#";
+                if (!appSettings.networkID) {
+                    titleElement.innerText = "No Server Selected";
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    sectionContainer.innerHTML = '<span>Channels</span>';
+                    return;
+                }
+
+                titleElement.innerText = appSettings.networkID.split('-').slice(2).join(' ').toUpperCase() || "SERVER CHANNELS";
+
+                if (!currentGroup && appSettings.groupChannels.length > 0) currentGroup = appSettings.groupChannels[0];
+
+                if (currentGroup) {
+                    chatPane.style.display = 'flex';
+                    fallbackPane.style.display = 'none';
+                    if(nameHeader) nameHeader.innerText = currentGroup;
+                } else {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                }
+
+                appSettings.groupChannels.forEach(channel => {
+                    const div = document.createElement('div');
+                    div.className = `channel-item ${currentGroup === channel ? 'active' : ''}`;
+                    div.innerHTML = `<div><span>#</span>${channel}</div>`;
+                    div.onclick = () => {
+                        currentGroup = channel; 
+                        renderSidebars(); 
+                        loadActiveChatFromCache();
+                        toggleMobileNav(false); 
+                    };
+                    container.appendChild(div);
+                });
+            } else {
+                titleElement.innerText = "Friends & DMs";
+                if(sym) sym.innerText = "@";
+
+                if (!appSettings.networkID) {
+                    sectionContainer.innerHTML = '<span>Friends List</span>';
+                    requestsContainer.style.display = 'none';
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    return;
+                }
+
+                sectionContainer.innerHTML = `
+                    <span>Direct Messages</span>
+                    <button class="add-friend-action-btn" onclick="sendFriendRequestPrompt()">➕ Add Friend</button>
+                `;
+
+                if (appSettings.pendingRequests && appSettings.pendingRequests.length > 0) {
+                    requestsContainer.style.display = 'block';
+                    const listHeader = document.createElement('div');
+                    listHeader.className = 'section-title';
+                    listHeader.innerText = `Pending Requests (${appSettings.pendingRequests.length})`;
+                    requestsContainer.appendChild(listHeader);
+
+                    appSettings.pendingRequests.forEach(user => {
+                        const reqDiv = document.createElement('div');
+                        reqDiv.className = 'request-item';
+                        reqDiv.innerHTML = `
+                            <div class="request-user">👤 ${user}</div>
+                            <div class="request-actions">
+                                <button class="req-btn req-accept" onclick="acceptFriendRequest('${user}')">Accept</button>
+                                <button class="req-btn req-deny" onclick="ignoreFriendRequest('${user}')">Ignore</button>
+                            </div>
+                        `;
+                        requestsContainer.appendChild(reqDiv);
+                    });
+                } else {
+                    requestsContainer.style.display = 'none';
+                }
+
+                if (currentDM) {
+                    chatPane.style.display = 'flex';
+                    fallbackPane.style.display = 'none';
+                    if(nameHeader) nameHeader.innerText = currentDM;
+                } else {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                }
+
+                appSettings.directMessages.forEach(dm => {
+                    const div = document.createElement('div');
+                    div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
+                    div.innerHTML = `
+                        <div><span>👤</span>${dm}</div>
+                        <span class="remove-dm-btn" title="Remove Listing">&times;</span>
+                    `;
+                    
+                    div.onclick = () => { 
+                        currentDM = dm; 
+                        renderSidebars(); 
+                        loadActiveChatFromCache(); 
+                        toggleMobileNav(false);
+                    };
+
+                    div.querySelector('.remove-dm-btn').onclick = (e) => {
+                        e.stopPropagation();
+                        removeDirectMessageContext(dm);
+                    };
+
+                    container.appendChild(div);
+                });
+            }
+        }
+
+        function sendFriendRequestPrompt() {
+            if (!appSettings.networkID) return;
+            const targetUser = prompt("Enter target friend's exact username:").trim().toLowerCase().replace(/\s+/g, '-');
+            if (!targetUser || targetUser === appSettings.username) return;
+
+            if (appSettings.directMessages.includes(targetUser)) {
+                alert("This user is already on your friend list!");
+                return;
+            }
+
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(targetUser)}`, { qos: 1 });
+                
+                mqttClient.publish(`${appSettings.networkID}/inbox/${targetUser}`, JSON.stringify({
+                    sender: appSettings.username,
+                    type: 'friend_handshake'
+                }), { qos: 1, retain: true });
+                
+                alert(`Friend request transmitted to "${targetUser}".`);
+            } else {
+                alert("Network link offline. Reconnect and re-submit.");
+            }
+        }
+
+        function acceptFriendRequest(senderName) {
+            appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
+            
+            if (!appSettings.directMessages.includes(senderName)) {
+                appSettings.directMessages.push(senderName);
+            }
+            
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+
+            if (mqttClient) {
+                mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(senderName)}`, { qos: 1 });
+                mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
+                
+                mqttClient.publish(`${appSettings.networkID}/inbox/${senderName}`, JSON.stringify({
+                    sender: appSettings.username,
+                    type: 'friend_accepted'
+                }), { qos: 1, retain: true });
+            }
+
+            currentDM = senderName;
+            renderSidebars();
+            loadActiveChatFromCache();
+        }
+
+        function ignoreFriendRequest(senderName) {
+            appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            if (mqttClient) {
+                mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
+            }
+            renderSidebars();
+        }
+
+        function createNewChannel() {
+            if (!appSettings.networkID) return;
+            const value = prompt("Enter Channel Name:");
+            if (!value) return;
+            
+            const cleanValue = value.trim().replace(/\s+/g, '-').toLowerCase();
+            if (!cleanValue) return;
+
+            if (!appSettings.groupChannels.includes(cleanValue)) {
+                appSettings.groupChannels.push(cleanValue);
+                if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${cleanValue}`, { qos: 1 });
+                currentGroup = cleanValue;
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function removeDirectMessageContext(targetDM) {
+            if(confirm(`Remove ${targetDM} from active listings?`)) {
+                appSettings.directMessages = appSettings.directMessages.filter(user => user !== targetDM);
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                if(currentDM === targetDM) currentDM = '';
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function confirmResetChat() {
+            if (!appSettings.networkID) return;
+            const targetName = currentMode === 'servers' ? `#${currentGroup}` : `@${currentDM}`;
+            if (confirm(`🗑️ Delete all message logs for ${targetName}?`)) {
+                const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
+                chatHistoryCache[cacheKey] = [];
+                saveCacheToLocalStorage();
+                clearChatUI();
+
+                if (mqttClient) {
+                    const destinationTopic = currentMode === 'servers' ? 
+                        `${appSettings.networkID}/servers/${currentGroup}` : 
+                        `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                    
+                    mqttClient.publish(destinationTopic, JSON.stringify({
+                        sender: appSettings.username,
+                        type: 'remote_wipe_command',
+                        mode: currentMode,
+                        target: currentMode === 'servers' ? currentGroup : currentDM
+                    }), { qos: 1 });
+                }
+            }
+        }
+
+        function switchView(mode) {
+            currentMode = mode;
+            document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
+            document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
+            if (window.innerWidth <= 767) toggleMobileNav(true);
+            renderSidebars();
+            loadActiveChatFromCache();
+        }
+
+        // SAFE SERVER PROMPT CONTROL: Handles cancellations securely
+        function promptCreateServer() {
+            const rawOption = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code:");
+            if (rawOption === null) return; // Terminate execution safely on Cancel
+            
+            const option = rawOption.trim();
+            if (!option) return;
+
+            if (option.toUpperCase() === 'CREATE') {
+                const serverName = prompt("Enter server hub name:");
+                if (serverName === null) return; // Terminate execution safely on Cancel
+                
+                const cleanName = serverName.trim();
+                if (!cleanName) return;
+
+                appSettings.networkID = "server-" + Math.random().toString(36).substring(2, 9) + "-" + cleanName.toLowerCase().replace(/\s+/g, '-');
+                appSettings.groupChannels = ['general', 'gaming'];
+                appSettings.directMessages = [];
+                appSettings.pendingRequests = [];
+                currentGroup = 'general';
+                currentDM = '';
+            } else {
+                appSettings.networkID = option;
+                appSettings.groupChannels = ['general']; 
+                appSettings.directMessages = [];
+                appSettings.pendingRequests = [];
+                currentGroup = 'general';
+                currentDM = '';
+            }
+            
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            loadCacheFromLocalStorage();
+            completeStartup();
+            toggleMobileNav(false);
+        }
+
+        function blockUser() {
+            const input = document.getElementById('privacy-username');
+            const target = input.value.trim().replace(/\s+/g, '-');
+            if(!target || target === appSettings.username) return;
+
+            if(!appSettings.blockedUsers.includes(target)) {
+                appSettings.blockedUsers.push(target);
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                renderBlockedList();
+                loadActiveChatFromCache();
+            }
+            input.value = '';
+        }
+
+        function unblockUser(target) {
+            appSettings.blockedUsers = appSettings.blockedUsers.filter(u => u !== target);
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            renderBlockedList();
+        }
+
+        function renderBlockedList() {
+            const listContainer = document.getElementById('blocked-list-ui');
+            if (!listContainer) return;
+            listContainer.innerHTML = '';
+            if(appSettings.blockedUsers.length === 0) {
+                listContainer.innerHTML = `<p style="font-size:13px; color:var(--text-muted); padding: 4px;">No users blocked.</p>`;
+                return;
+            }
+            appSettings.blockedUsers.forEach(user => {
+                const item = document.createElement('div');
+                item.className = 'blocked-item';
+                item.innerHTML = `<span>${user}</span><button class="unblock-btn" onclick="unblockUser('${user}')">Unblock</button>`;
+                listContainer.appendChild(item);
+            });
+        }
+
+        function clearChatUI() {
+            const container = document.getElementById('messages-container');
+            if (container) container.innerHTML = '';
+        }
+
+        function loadActiveChatFromCache() {
+            clearChatUI();
+            if (!appSettings.networkID) return;
+            const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
+            if (chatHistoryCache[cacheKey]) {
+                chatHistoryCache[cacheKey].forEach(msg => {
+                    appendMessageToDOM(msg.sender, msg.text, msg.mediaUrl);
+                });
+            }
+        }
+
+        function appendMessageToDOM(author, text, mediaUrl) {
+            const container = document.getElementById('messages-container');
+            if (!container) return;
+            
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message';
+            msgDiv.innerHTML = `
+                <div class="avatar" style="background-color: ${stringToColor(author || 'unknown')}">${(author || '??').substring(0, 2).toUpperCase()}</div>
+                <div class="message-content">
+                    <div class="message-author">${author || 'Unknown'}</div>
+                    ${text ? `<div class="message-text">${escapeHTML(text)}</div>` : ''}
+                    ${mediaUrl ? `<img src="${escapeHTML(mediaUrl)}" class="chat-image" onerror="this.style.display='none';">` : ''}
+                </div>
+            `;
+            container.appendChild(msgDiv);
+            
+            // Allow layout micro-delay adjustments for mobile asset parsing
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 30);
+        }
+
+        function saveMessageToCache(cacheKey, sender, text, mediaUrl) {
+            if (!chatHistoryCache[cacheKey]) chatHistoryCache[cacheKey] = [];
+            const matches = chatHistoryCache[cacheKey].filter(m => m.sender === sender && m.text === text && m.mediaUrl === mediaUrl);
+            if (matches.length === 0) {
+                chatHistoryCache[cacheKey].push({ sender, text, mediaUrl });
+                saveCacheToLocalStorage();
+            }
+        }
+
+        function handleIncomingMessage(topic, payload) {
+            if (!payload || typeof payload !== 'object') return;
+            const segments = topic.split('/');
+            const type = segments[1]; 
+            const target = segments[2];
+
+            if (type === 'inbox' && target === appSettings.username) {
+                if (payload.type === 'friend_handshake') {
+                    if (!appSettings.directMessages.includes(payload.sender) && !appSettings.pendingRequests.includes(payload.sender)) {
+                        appSettings.pendingRequests.push(payload.sender);
+                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                        renderSidebars();
+                    }
+                } else if (payload.type === 'friend_accepted') {
+                    if (!appSettings.directMessages.includes(payload.sender)) {
+                        appSettings.directMessages.push(payload.sender);
+                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                        if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`, { qos: 1 });
+                        mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
+                        renderSidebars();
+                    }
+                }
+                return;
+            }
+
+            if (type === 'servers') {
+                const cacheKey = `server_${target}`;
+                saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
+                if (currentMode === 'servers' && target === currentGroup) {
+                    appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
+                }
+            } else if (type === 'dms') {
+                if (target === getDMScope(payload.sender) || target === getDMScope(currentDM)) {
+                    const dynamicPartnerKey = (payload.sender === appSettings.username) ? currentDM : payload.sender;
+                    
+                    if (dynamicPartnerKey) {
+                        if (!appSettings.directMessages.includes(dynamicPartnerKey)) {
+                            appSettings.directMessages.push(dynamicPartnerKey);
+                            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                            renderSidebars();
+                        }
+
+                        const cacheKey = `dm_${dynamicPartnerKey}`;
+                        saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl);
+                        
+                        if (currentMode === 'dms' && currentDM === dynamicPartnerKey) {
+                            appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl);
+                        }
+                    }
+                }
+            }
+        }
+
+        function transmitMessage(forcedText = null, forcedMedia = null) {
+            if (!mqttClient || !mqttClient.connected) {
+                alert("Connection lost. Re-establishing connection...");
+                initNetwork();
+                return;
+            }
+            const input = document.getElementById('message-input');
+            const text = forcedText !== null ? forcedText : input.value.trim();
+            const mediaUrl = forcedMedia;
+            
+            if (!text && !mediaUrl) return;
+            if (currentMode === 'dms' && !currentDM) return;
+            if (currentMode === 'servers' && !currentGroup) return;
+
+            const payload = { sender: appSettings.username, text: text, mediaUrl: mediaUrl, timestamp: Date.now() };
+            let destinationTopic = '';
+
+            if (currentMode === 'servers') {
+                destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
+            } else {
+                destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                saveMessageToCache(`dm_${currentDM}`, appSettings.username, payload.text, payload.mediaUrl);
+                appendMessageToDOM(appSettings.username, payload.text, payload.mediaUrl);
+            }
+
+            mqttClient.publish(destinationTopic, JSON.stringify(payload), { qos: 1 });
+            if (forcedText === null && input) input.value = '';
+        }
+
+        function promptAttachMedia() {
+            const url = prompt("Paste your Image Address link:");
+            if (url) transmitMessage("", url);
+        }
+
+        function toggleSettings(open) {
+            document.getElementById('settings-overlay').style.display = open ? 'block' : 'none';
+            if(open) toggleMobileNav(false);
+        }
+
+        function updateNetworkID() {
+            const netId = document.getElementById('input-app-id').value.trim();
+            if(netId) {
+                appSettings.networkID = netId;
+                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                loadCacheFromLocalStorage();
+                initNetwork();
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function updateAccessibility() {
+            const theme = document.getElementById('select-theme').value;
+            const size = document.getElementById('input-font-size').value;
+            appSettings.theme = theme;
+            appSettings.fontSize = size;
+            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            document.documentElement.style.fontSize = size;
+
+            const root = document.documentElement;
+            if (theme === 'dark') {
+                root.style.setProperty('--bg-primary', '#313338');
+                root.style.setProperty('--bg-sidebar', '#2b2d31');
+                root.style.setProperty('--bg-servers', '#1e1f22');
+                root.style.setProperty('--text-normal', '#dbdee1');
+                root.style.setProperty('--input-bg', '#383a40');
+            } else if (theme === 'light') {
+                root.style.setProperty('--bg-primary', '#ffffff');
+                root.style.setProperty('--bg-sidebar', '#f2f3f5');
+                root.style.setProperty('--bg-servers', '#e3e5e8');
+                root.style.setProperty('--text-normal', '#313338');
+                root.style.setProperty('--input-bg', '#e3e5e8');
+            } else if (theme === 'amoled') {
+                root.style.setProperty('--bg-primary', '#000000');
+                root.style.setProperty('--bg-sidebar', '#0a0a0a');
+                root.style.setProperty('--bg-servers', '#000000');
+                root.style.setProperty('--text-normal', '#ffffff');
+                root.style.setProperty('--input-bg', '#121212');
+            } else if (theme === 'deuteranopia') {
+                root.style.setProperty('--bg-primary', '#2d2a32');
+                root.style.setProperty('--brand-color', '#3b82f6');
+                root.style.setProperty('--text-normal', '#fdf0d5');
+                root.style.setProperty('--input-bg', '#3f3b46');
+            }
+        }
+
+        function stringToColor(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            return `hsl(${Math.abs(hash % 360)}, 65%, 45%)`;
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function completeStartup() {
+            document.getElementById('input-username').value = appSettings.username;
+            document.getElementById('user-avatar').innerText = appSettings.username.substring(0,2).toUpperCase();
+            document.getElementById('user-name-display').innerText = appSettings.username;
+            document.getElementById('select-theme').value = appSettings.theme;
+            document.getElementById('input-font-size').value = appSettings.fontSize;
+
+            updateAccessibility();
+            loadCacheFromLocalStorage();
+            initNetwork();
+            renderSidebars();
+            loadActiveChatFromCache();
+            renderBlockedList();
+        }
+
+        document.getElementById('message-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') transmitMessage();
+        });
+
+        // Bootstrap memory check routine execution
+        const cached = localStorage.getItem('discord_clone_user');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.username) {
+                appSettings = parsed;
+                if(!appSettings.blockedUsers) appSettings.blockedUsers = [];
+                if(!appSettings.groupChannels) appSettings.groupChannels = [];
+                if(!appSettings.directMessages) appSettings.directMessages = [];
+                if(!appSettings.pendingRequests) appSettings.pendingRequests = [];
+                
+                document.getElementById('login-screen').style.display = 'none';
+                completeStartup();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Dumscored</title>
+    <title>Dumscored Mobile Ultimate</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         :root {
@@ -1302,4 +1302,688 @@
                 titleElement.innerText = "Friends & DMs";
                 if(sym) sym.innerText = "@";
 
-                if (!app
+                if (!appSettings.networkID) {
+                    sectionContainer.innerHTML = '<span>Friends List</span>';
+                    requestsContainer.style.display = 'none';
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                    return;
+                }
+
+                sectionContainer.innerHTML = `
+                    <span>Direct Messages</span>
+                    <button class="add-friend-action-btn" onclick="sendFriendRequestPrompt()">➕ Add Friend</button>
+                `;
+
+                if (appSettings.pendingRequests && appSettings.pendingRequests.length > 0) {
+                    requestsContainer.style.display = 'block';
+                    const listHeader = document.createElement('div');
+                    listHeader.className = 'section-title';
+                    listHeader.innerText = `Pending Requests (${appSettings.pendingRequests.length})`;
+                    requestsContainer.appendChild(listHeader);
+
+                    appSettings.pendingRequests.forEach(user => {
+                        const reqDiv = document.createElement('div');
+                        reqDiv.className = 'request-item';
+                        reqDiv.innerHTML = `
+                            <div class="request-user">👤 ${user}</div>
+                            <div class="request-actions">
+                                <button class="req-btn req-accept" onclick="acceptFriendRequest('${user}')">Accept</button>
+                                <button class="req-btn req-deny" onclick="ignoreFriendRequest('${user}')">Ignore</button>
+                            </div>
+                        `;
+                        requestsContainer.appendChild(reqDiv);
+                    });
+                } else {
+                    requestsContainer.style.display = 'none';
+                }
+
+                if (currentDM) {
+                    chatPane.style.display = 'flex';
+                    fallbackPane.style.display = 'none';
+                    if(nameHeader) nameHeader.innerText = currentDM;
+                } else {
+                    chatPane.style.display = 'none';
+                    fallbackPane.style.display = 'flex';
+                }
+
+                appSettings.directMessages.forEach(dm => {
+                    const div = document.createElement('div');
+                    div.className = `channel-item ${currentDM === dm ? 'active' : ''}`;
+                    div.innerHTML = `
+                        <div><span>👤</span>${dm}</div>
+                        <span class="remove-dm-btn" title="Remove Listing">&times;</span>
+                    `;
+                    
+                    div.onclick = () => { 
+                        currentDM = dm; 
+                        renderSidebars(); 
+                        loadActiveChatFromCache(); 
+                        toggleMobileNav(false);
+                    };
+
+                    div.querySelector('.remove-dm-btn').onclick = (e) => {
+                        e.stopPropagation();
+                        removeDirectMessageContext(dm);
+                    };
+
+                    container.appendChild(div);
+                });
+            }
+        }
+
+        function sendFriendRequestPrompt() {
+            if (!appSettings.networkID) return;
+            const targetUser = prompt("Enter target friend's exact username:").trim().toLowerCase().replace(/\s+/g, '-');
+            if (!targetUser || targetUser === appSettings.username) return;
+
+            if (appSettings.directMessages.includes(targetUser)) {
+                alert("This user is already on your friend list!");
+                return;
+            }
+
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(targetUser)}`, { qos: 1 });
+                
+                mqttClient.publish(`${appSettings.networkID}/inbox/${targetUser}`, JSON.stringify({
+                    sender: appSettings.username,
+                    type: 'friend_handshake'
+                }), { qos: 1, retain: true });
+                
+                alert(`Friend request transmitted to "${targetUser}".`);
+            } else {
+                alert("Network link offline. Reconnect and re-submit.");
+            }
+        }
+
+        function acceptFriendRequest(senderName) {
+            appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
+            
+            if (!appSettings.directMessages.includes(senderName)) {
+                appSettings.directMessages.push(senderName);
+            }
+            
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+
+            if (mqttClient) {
+                mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(senderName)}`, { qos: 1 });
+                mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
+                
+                mqttClient.publish(`${appSettings.networkID}/inbox/${senderName}`, JSON.stringify({
+                    sender: appSettings.username,
+                    type: 'friend_accepted'
+                }), { qos: 1, retain: true });
+            }
+
+            currentDM = senderName;
+            renderSidebars();
+            loadActiveChatFromCache();
+        }
+
+        function ignoreFriendRequest(senderName) {
+            appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+            if (mqttClient) {
+                mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
+            }
+            renderSidebars();
+        }
+
+        function createNewChannel() {
+            if (!appSettings.networkID) return;
+            const value = prompt("Enter Channel Name:");
+            if (!value) return;
+            
+            const cleanValue = value.trim().replace(/\s+/g, '-').toLowerCase();
+            if (!cleanValue) return;
+
+            if (!appSettings.groupChannels.includes(cleanValue)) {
+                appSettings.groupChannels.push(cleanValue);
+                if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${cleanValue}`, { qos: 1 });
+                currentGroup = cleanValue;
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function removeDirectMessageContext(targetDM) {
+            if(confirm(`Remove ${targetDM} from active listings?`)) {
+                appSettings.directMessages = appSettings.directMessages.filter(user => user !== targetDM);
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+                if(currentDM === targetDM) currentDM = '';
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function confirmResetChat() {
+            if (!appSettings.networkID) return;
+            const targetName = currentMode === 'servers' ? `#${currentGroup}` : `@${currentDM}`;
+            if (confirm(`🗑️ Delete all message logs for ${targetName}?`)) {
+                const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
+                chatHistoryCache[cacheKey] = [];
+                saveCacheToLocalStorage();
+                clearChatUI();
+
+                if (mqttClient) {
+                    const destinationTopic = currentMode === 'servers' ? 
+                        `${appSettings.networkID}/servers/${currentGroup}` : 
+                        `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                    
+                    mqttClient.publish(destinationTopic, JSON.stringify({
+                        sender: appSettings.username,
+                        type: 'remote_wipe_command',
+                        mode: currentMode,
+                        target: currentMode === 'servers' ? currentGroup : currentDM
+                    }), { qos: 1 });
+                }
+            }
+        }
+
+        function triggerModeratorDelete(msgUID) {
+            if (!appSettings.networkID || !msgUID) return;
+            if (confirm("🛡️ [MODERATION] Remove this message entirely from everyone's screen?")) {
+                const destinationTopic = currentMode === 'servers' ? 
+                    `${appSettings.networkID}/servers/${currentGroup}` : 
+                    `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                
+                if (mqttClient) {
+                    mqttClient.publish(destinationTopic, JSON.stringify({
+                        sender: appSettings.username,
+                        type: 'remote_msg_delete',
+                        msgUID: msgUID,
+                        mode: currentMode,
+                        target: currentMode === 'servers' ? currentGroup : currentDM
+                    }), { qos: 1 });
+                }
+            }
+        }
+
+        function switchView(mode) {
+            currentMode = mode;
+            document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
+            document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
+            if (window.innerWidth <= 767) toggleMobileNav(true);
+            renderSidebars();
+            loadActiveChatFromCache();
+        }
+
+        function promptCreateServer() {
+            const rawOption = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code:");
+            if (rawOption === null) return; 
+            
+            const option = rawOption.trim();
+            if (!option) return;
+
+            if (option.toUpperCase() === 'CREATE') {
+                const serverName = prompt("Enter server hub name:");
+                if (serverName === null) return; 
+                
+                const cleanName = serverName.trim();
+                if (!cleanName) return;
+
+                appSettings.networkID = "server-" + Math.random().toString(36).substring(2, 9) + "-" + cleanName.toLowerCase().replace(/\s+/g, '-');
+                appSettings.groupChannels = ['general', 'gaming'];
+                appSettings.directMessages = [];
+                appSettings.pendingRequests = [];
+                currentGroup = 'general';
+                currentDM = '';
+            } else {
+                appSettings.networkID = option;
+                appSettings.groupChannels = ['general']; 
+                appSettings.directMessages = [];
+                appSettings.pendingRequests = [];
+                currentGroup = 'general';
+                currentDM = '';
+            }
+            
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+            loadCacheFromLocalStorage();
+            completeStartup();
+            toggleMobileNav(false);
+        }
+
+        function blockUser() {
+            const input = document.getElementById('privacy-username');
+            const target = input.value.trim().replace(/\s+/g, '-');
+            if(!target || target === appSettings.username) return;
+
+            if(!appSettings.blockedUsers.includes(target)) {
+                appSettings.blockedUsers.push(target);
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+                renderBlockedList();
+                loadActiveChatFromCache();
+            }
+            input.value = '';
+        }
+
+        function unblockUser(target) {
+            appSettings.blockedUsers = appSettings.blockedUsers.filter(u => u !== target);
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+            renderBlockedList();
+        }
+
+        function renderBlockedList() {
+            const listContainer = document.getElementById('blocked-list-ui');
+            if (!listContainer) return;
+            listContainer.innerHTML = '';
+            if(appSettings.blockedUsers.length === 0) {
+                listContainer.innerHTML = `<p style="font-size:13px; color:var(--text-muted); padding: 4px;">No users blocked.</p>`;
+                return;
+            }
+            appSettings.blockedUsers.forEach(user => {
+                const item = document.createElement('div');
+                item.className = 'blocked-item';
+                item.innerHTML = `<span>${user}</span><button class="unblock-btn" onclick="unblockUser('${user}')">Unblock</button>`;
+                listContainer.appendChild(item);
+            });
+        }
+
+        function updateProfileSettings() {
+            appSettings.avatarUrl = document.getElementById('input-avatar-url').value.trim();
+            appSettings.statusType = document.getElementById('select-user-status').value;
+            appSettings.statusCustomText = document.getElementById('input-status-custom-text').value.trim() || 'Online';
+            
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+            applyLocalProfileUI();
+        }
+
+        function updateShooterGameSource() {
+            appSettings.shooterGameUrl = document.getElementById('input-shooter-url').value.trim() || 'https://taanzzz.github.io/';
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+        }
+
+        function applyLocalProfileUI() {
+            const elAvatar = document.getElementById('user-avatar');
+            const elDot = document.getElementById('user-status-dot');
+            const elStatusText = document.getElementById('user-status-text');
+
+            if (appSettings.avatarUrl) {
+                elAvatar.style.backgroundImage = `url('${appSettings.avatarUrl}')`;
+                elAvatar.innerText = '';
+            } else {
+                elAvatar.style.backgroundImage = 'none';
+                elAvatar.innerText = appSettings.username.substring(0,2).toUpperCase();
+            }
+
+            elDot.className = `status-dot status-${appSettings.statusType}`;
+            elStatusText.innerText = appSettings.statusCustomText;
+        }
+
+        function toggleShooterGamePortal(open) {
+            const modal = document.getElementById('game-portal-modal');
+            const iframe = document.getElementById('game-viewport-frame');
+            if(open) {
+                iframe.src = appSettings.shooterGameUrl;
+                modal.style.display = 'flex';
+            } else {
+                iframe.src = 'about:blank';
+                modal.style.display = 'none';
+            }
+        }
+
+        function initializeReplyContext(msgUID, authorName, textSnippet) {
+            activeReplyPayload = { msgUID, authorName, textSnippet };
+            document.getElementById('reply-target-username').innerText = authorName;
+            document.getElementById('reply-target-text').innerText = textSnippet.length > 40 ? textSnippet.substring(0, 40) + '...' : textSnippet;
+            document.getElementById('active-reply-bar').style.display = 'flex';
+            document.getElementById('message-input').focus();
+        }
+
+        function clearActiveReplyContext() {
+            activeReplyPayload = null;
+            document.getElementById('active-reply-bar').style.display = 'none';
+        }
+
+        function broadcastTypingPulse() {
+            if (!mqttClient || !mqttClient.connected || !appSettings.networkID) return;
+            const scope = currentMode === 'servers' ? currentGroup : currentDM;
+            if(!scope) return;
+
+            mqttClient.publish(`${appSettings.networkID}/typing/${scope}/${appSettings.username}`, JSON.stringify({
+                timestamp: Date.now()
+            }), { qos: 0 });
+        }
+
+        function handleTypingPayloadStream(topic, payload) {
+            const segs = topic.split('/');
+            const scope = segs[3];
+            const sender = segs[4];
+            const activeScope = currentMode === 'servers' ? currentGroup : currentDM;
+
+            if (sender === appSettings.username || scope !== activeScope) return;
+
+            runningTypingTrackMap[sender] = Date.now();
+            renderTypingInterfaceTrackers();
+        }
+
+        function renderTypingInterfaceTrackers() {
+            const container = document.getElementById('typing-stream-indicator');
+            if (!container) return;
+            
+            const now = Date.now();
+            let activeTypers = [];
+
+            for (let typer in runningTypingTrackMap) {
+                if (now - runningTypingTrackMap[typer] < 3000) { // 3 seconds timeout loop
+                    activeTypers.push(typer);
+                }
+            }
+
+            if (activeTypers.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let textString = '';
+            if (activeTypers.length === 1) {
+                textString = `<strong>${activeTypers[0]}</strong> is typing`;
+            } else if (activeTypers.length === 2) {
+                textString = `<strong>${activeTypers[0]}</strong> and <strong>${activeTypers[1]}</strong> are typing`;
+            } else {
+                textString = 'Several users are typing';
+            }
+
+            container.innerHTML = `
+                <div class="typing-bubble-dot"></div>
+                <div class="typing-bubble-dot"></div>
+                <div class="typing-bubble-dot"></div>
+                <span style="margin-left: 4px;">${textString}</span>
+            `;
+        }
+
+        // Clean stale typing tracks
+        setInterval(renderTypingInterfaceTrackers, 1500);
+
+        function clearChatUI() {
+            const container = document.getElementById('messages-container');
+            if (container) container.innerHTML = '';
+        }
+
+        function loadActiveChatFromCache() {
+            clearChatUI();
+            if (!appSettings.networkID) return;
+            const cacheKey = currentMode === 'servers' ? `server_${currentGroup}` : `dm_${currentDM}`;
+            if (chatHistoryCache[cacheKey]) {
+                chatHistoryCache[cacheKey].forEach(msg => {
+                    appendMessageToDOM(msg.sender, msg.text, msg.mediaUrl, msg.msgUID, msg.avatarUrl, msg.replyContext);
+                });
+            }
+        }
+
+        function appendMessageToDOM(author, text, mediaUrl, msgUID, authorAvatar = '', replyContext = null) {
+            const container = document.getElementById('messages-container');
+            if (!container) return;
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message-wrapper';
+            wrapper.setAttribute('data-uid', msgUID);
+
+            // Append Reply reference header context if present
+            if (replyContext) {
+                const replyLine = document.createElement('div');
+                replyLine.className = 'reply-context-line';
+                replyLine.innerHTML = `<span>@${replyContext.authorName}:</span> <span>${escapeHTML(replyContext.textSnippet)}</span>`;
+                wrapper.appendChild(replyLine);
+            }
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message';
+            
+            const avatarStyle = authorAvatar ? `background-image: url('${escapeHTML(authorAvatar)}'); font-size:0;` : `background-color: ${stringToColor(author || 'unknown')}`;
+            const parsedContent = formatMarkdownRichLinksText(text || '');
+
+            msgDiv.innerHTML = `
+                <div class="avatar" style="${avatarStyle}">${(author || '??').substring(0, 2).toUpperCase()}</div>
+                <div class="message-content">
+                    <div class="message-meta-header">
+                        <span class="message-author">${author || 'Unknown'}</span>
+                        <span class="message-timestamp">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    ${text ? `<div class="message-text">${parsedContent}</div>` : ''}
+                    ${mediaUrl ? `<img src="${escapeHTML(mediaUrl)}" class="chat-image" onerror="this.style.display='none';">` : ''}
+                </div>
+                
+                <div class="message-actions-overlay">
+                    <button class="msg-action-btn" onclick="initializeReplyContext('${msgUID}', '${escapeHTML(author)}', '${escapeHTML(text || '[Media Attachment]')}')">Reply</button>
+                    <button class="msg-action-btn mod-delete" onclick="triggerModeratorDelete('${msgUID}')">🛡️ Delete</button>
+                </div>
+            `;
+            
+            wrapper.appendChild(msgDiv);
+            container.appendChild(wrapper);
+            
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 30);
+        }
+
+        function formatMarkdownRichLinksText(rawStr) {
+            let safe = escapeHTML(rawStr);
+            // Replace *italics*
+            safe = safe.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            // Inject inline hyperlinks clickable context safely
+            const linkPattern = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
+            safe = safe.replace(linkPattern, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            return safe;
+        }
+
+        function saveMessageToCache(cacheKey, sender, text, mediaUrl, msgUID, authorAvatar, replyContext) {
+            if (!chatHistoryCache[cacheKey]) chatHistoryCache[cacheKey] = [];
+            const matches = chatHistoryCache[cacheKey].filter(m => m.msgUID === msgUID);
+            if (matches.length === 0) {
+                chatHistoryCache[cacheKey].push({ sender, text, mediaUrl, msgUID, avatarUrl: authorAvatar, replyContext });
+                saveCacheToLocalStorage();
+            }
+        }
+
+        function handleIncomingMessage(topic, payload) {
+            if (!payload || typeof payload !== 'object') return;
+            const segments = topic.split('/');
+            const type = segments[1]; 
+            const target = segments[2];
+
+            if (type === 'inbox' && target === appSettings.username) {
+                if (payload.type === 'friend_handshake') {
+                    if (!appSettings.directMessages.includes(payload.sender) && !appSettings.pendingRequests.includes(payload.sender)) {
+                        appSettings.pendingRequests.push(payload.sender);
+                        localStorage.setItem('dumscored_user', JSON.stringify(appSettings));
+                        renderSidebars();
+                    }
+                } else if (payload.type === 'friend_accepted') {
+                    if (!appSettings.directMessages.includes(payload.sender)) {
+                        appSettings.directMessages.push(payload.sender);
+                        localStorage.setItem('dumscored_user', JSON.stringify(appSettings));
+                        if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`, { qos: 1 });
+                        mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
+                        renderSidebars();
+                    }
+                }
+                return;
+            }
+
+            if (type === 'servers') {
+                const cacheKey = `server_${target}`;
+                saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl, payload.msgUID, payload.authorAvatar, payload.replyContext);
+                if (currentMode === 'servers' && target === currentGroup) {
+                    appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl, payload.msgUID, payload.authorAvatar, payload.replyContext);
+                }
+            } else if (type === 'dms') {
+                if (target === getDMScope(payload.sender) || target === getDMScope(currentDM)) {
+                    const dynamicPartnerKey = (payload.sender === appSettings.username) ? currentDM : payload.sender;
+                    
+                    if (dynamicPartnerKey) {
+                        if (!appSettings.directMessages.includes(dynamicPartnerKey)) {
+                            appSettings.directMessages.push(dynamicPartnerKey);
+                            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+                            renderSidebars();
+                        }
+
+                        const cacheKey = `dm_${dynamicPartnerKey}`;
+                        saveMessageToCache(cacheKey, payload.sender, payload.text, payload.mediaUrl, payload.msgUID, payload.authorAvatar, payload.replyContext);
+                        
+                        if (currentMode === 'dms' && currentDM === dynamicPartnerKey) {
+                            appendMessageToDOM(payload.sender, payload.text, payload.mediaUrl, payload.msgUID, payload.authorAvatar, payload.replyContext);
+                        }
+                    }
+                }
+            }
+        }
+
+        function transmitMessage(forcedText = null, forcedMedia = null) {
+            if (!mqttClient || !mqttClient.connected) {
+                alert("Connection lost. Re-establishing connection...");
+                initNetwork();
+                return;
+            }
+            const input = document.getElementById('message-input');
+            const text = forcedText !== null ? forcedText : input.value.trim();
+            const mediaUrl = forcedMedia;
+            
+            if (!text && !mediaUrl) return;
+            if (currentMode === 'dms' && !currentDM) return;
+            if (currentMode === 'servers' && !currentGroup) return;
+
+            const msgUID = 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+
+            const payload = { 
+                msgUID: msgUID,
+                sender: appSettings.username, 
+                text: text, 
+                mediaUrl: mediaUrl, 
+                timestamp: Date.now(),
+                authorAvatar: appSettings.avatarUrl || '',
+                replyContext: activeReplyPayload // Append explicit context bindings
+            };
+            
+            let destinationTopic = '';
+
+            if (currentMode === 'servers') {
+                destinationTopic = `${appSettings.networkID}/servers/${currentGroup}`;
+            } else {
+                destinationTopic = `${appSettings.networkID}/dms/${getDMScope(currentDM)}`;
+                saveMessageToCache(`dm_${currentDM}`, appSettings.username, payload.text, payload.mediaUrl, payload.msgUID, payload.authorAvatar, payload.replyContext);
+                appendMessageToDOM(appSettings.username, payload.text, payload.mediaUrl, payload.msgUID, payload.authorAvatar, payload.replyContext);
+            }
+
+            mqttClient.publish(destinationTopic, JSON.stringify(payload), { qos: 1 });
+            if (forcedText === null && input) input.value = '';
+            clearActiveReplyContext();
+        }
+
+        function promptAttachMedia() {
+            const url = prompt("Paste your Photo / GIF Link Address URL location:");
+            if (url) transmitMessage("", url);
+        }
+
+        function toggleSettings(open) {
+            document.getElementById('settings-overlay').style.display = open ? 'block' : 'none';
+            if(open) toggleMobileNav(false);
+        }
+
+        function updateNetworkID() {
+            const netId = document.getElementById('input-app-id').value.trim();
+            if(netId) {
+                appSettings.networkID = netId;
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+                loadCacheFromLocalStorage();
+                initNetwork();
+                renderSidebars();
+                loadActiveChatFromCache();
+            }
+        }
+
+        function updateAccessibility() {
+            const theme = document.getElementById('select-theme').value;
+            const size = document.getElementById('input-font-size').value;
+            appSettings.theme = theme;
+            appSettings.fontSize = size;
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
+            document.documentElement.style.fontSize = size;
+
+            const root = document.documentElement;
+            if (theme === 'dark') {
+                root.style.setProperty('--bg-primary', '#313338');
+                root.style.setProperty('--bg-sidebar', '#2b2d31');
+                root.style.setProperty('--bg-servers', '#1e1f22');
+                root.style.setProperty('--text-normal', '#dbdee1');
+                root.style.setProperty('--input-bg', '#383a40');
+                root.style.setProperty('--reply-bg', '#2e3035');
+            } else if (theme === 'light') {
+                root.style.setProperty('--bg-primary', '#ffffff');
+                root.style.setProperty('--bg-sidebar', '#f2f3f5');
+                root.style.setProperty('--bg-servers', '#e3e5e8');
+                root.style.setProperty('--text-normal', '#313338');
+                root.style.setProperty('--input-bg', '#e3e5e8');
+                root.style.setProperty('--reply-bg', '#ebedef');
+            } else if (theme === 'amoled') {
+                root.style.setProperty('--bg-primary', '#000000');
+                root.style.setProperty('--bg-sidebar', '#0a0a0a');
+                root.style.setProperty('--bg-servers', '#000000');
+                root.style.setProperty('--text-normal', '#ffffff');
+                root.style.setProperty('--input-bg', '#121212');
+                root.style.setProperty('--reply-bg', '#1a1a1a');
+            } else if (theme === 'deuteranopia') {
+                root.style.setProperty('--bg-primary', '#2d2a32');
+                root.style.setProperty('--brand-color', '#3b82f6');
+                root.style.setProperty('--text-normal', '#fdf0d5');
+                root.style.setProperty('--input-bg', '#3f3b46');
+                root.style.setProperty('--reply-bg', '#34303a');
+            }
+        }
+
+        function stringToColor(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            return `hsl(${Math.abs(hash % 360)}, 65%, 45%)`;
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function completeStartup() {
+            document.getElementById('input-username').value = appSettings.username;
+            document.getElementById('input-avatar-url').value = appSettings.avatarUrl || '';
+            document.getElementById('select-user-status').value = appSettings.statusType;
+            document.getElementById('input-status-custom-text').value = appSettings.statusCustomText || 'Online';
+            document.getElementById('select-theme').value = appSettings.theme;
+            document.getElementById('input-font-size').value = appSettings.fontSize;
+            document.getElementById('input-shooter-url').value = appSettings.shooterGameUrl || 'https://taanzzz.github.io/';
+
+            updateAccessibility();
+            loadCacheFromLocalStorage();
+            applyLocalProfileUI();
+            initNetwork();
+            renderSidebars();
+            loadActiveChatFromCache();
+            renderBlockedList();
+        }
+
+        document.getElementById('message-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') transmitMessage();
+        });
+
+        // Bootstrap memory check routine execution
+        const cached = localStorage.getItem('dumscored_clone_user');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.username) {
+                appSettings = parsed;
+                if(!appSettings.blockedUsers) appSettings.blockedUsers = [];
+                if(!appSettings.groupChannels) appSettings.groupChannels = [];
+                if(!appSettings.directMessages) appSettings.directMessages = [];
+                if(!appSettings.pendingRequests) appSettings.pendingRequests = [];
+                if(!appSettings.avatarUrl) appSettings.avatarUrl = '';
+                if(!appSettings.statusType) appSettings.statusType = 'online';
+                if(!appSettings.statusCustomText) appSettings.statusCustomText = 'Online';
+                if(!appSettings.shooterGameUrl) appSettings.shooterGameUrl = 'https://taanzzz.github.io/';
+                
+                document.getElementById('login-screen').style.display = 'none';
+                completeStartup();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -412,14 +412,21 @@
         }
 
         .game-hub-btn {
-            background-color: var(--success-color);
+            background-color: var(--brand-color);
             color: white;
             border: none;
-            padding: 4px 10px;
+            padding: 6px 12px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
             font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .game-hub-btn:hover {
+            background-color: #4752c4;
         }
 
         .reset-chat-btn {
@@ -439,15 +446,6 @@
             border-radius: 12px;
             background-color: var(--danger-color);
             color: white;
-            cursor: pointer;
-        }
-
-        .mobile-nav-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: var(--text-normal);
-            font-size: 22px;
             cursor: pointer;
         }
 
@@ -547,6 +545,51 @@
             display: block;
             object-fit: contain;
             border: 1px solid #1e1f22;
+        }
+
+        /* Interactive Invite Card Component */
+        .party-invite-card {
+            background-color: #2b2d31;
+            border: 1px solid var(--brand-color);
+            border-left: 4px solid var(--brand-color);
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 8px;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .invite-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+
+        .invite-game-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .join-party-btn {
+            background-color: var(--success-color);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+            text-align: center;
+            transition: background-color 0.15s ease;
+        }
+
+        .join-party-btn:hover {
+            background-color: #1a8544;
         }
 
         /* Context action popup for mod / replies */
@@ -654,6 +697,11 @@
             align-items: center;
             color: white;
             margin-bottom: 12px;
+        }
+
+        .game-action-row {
+            display: flex;
+            gap: 10px;
         }
 
         .game-iframe {
@@ -1040,7 +1088,7 @@
 
                 <div class="setting-group">
                     <label for="input-shooter-url">Shooter Game Deployment Source URL</label>
-                    <input type="url" id="input-shooter-url" placeholder="https://taanzzz.github.io/your-game" onchange="updateShooterGameSource()">
+                    <input type="url" id="input-shooter-url" placeholder="https://4xw1n.github.io/shooter/" onchange="updateShooterGameSource()">
                 </div>
 
                 <h2>Privacy (Block Layout)</h2>
@@ -1059,7 +1107,10 @@
     <div class="game-overlay-container" id="game-portal-modal">
         <div class="game-header-bar">
             <h2 id="game-portal-title">3D Multiplayer Shooter Environment</h2>
-            <button class="privacy-btn" onclick="toggleShooterGamePortal(false)">Exit Match Portal</button>
+            <div class="game-action-row">
+                <button class="join-party-btn" style="background-color: var(--brand-color);" onclick="sendPartyInviteToChat()">🔗 Share Invite to Chat</button>
+                <button class="privacy-btn" onclick="toggleShooterGamePortal(false)">Exit Match Portal</button>
+            </div>
         </div>
         <iframe src="about:blank" class="game-iframe" id="game-viewport-frame" allow="autoplay; fullscreen; pointer-lock;"></iframe>
     </div>
@@ -1087,7 +1138,7 @@
             avatarUrl: '',
             statusType: 'online',
             statusCustomText: 'Online',
-            shooterGameUrl: 'https://taanzzz.github.io/' // Default game fallback repository
+            shooterGameUrl: 'https://4xw1n.github.io/shooter/' 
         };
 
         let chatHistoryCache = {};
@@ -1177,7 +1228,6 @@
                 }
                 
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`, { qos: 1 });
-                // Subscribe to typing streams inside active server channel environment
                 mqttClient.subscribe(`${appSettings.networkID}/typing/+/+`, { qos: 0 });
             });
 
@@ -1216,7 +1266,6 @@
                         return;
                     }
 
-                    // Intercept typing indicators
                     if (topic.includes('/typing/')) {
                         handleTypingPayloadStream(topic, payload);
                         return;
@@ -1500,7 +1549,7 @@
             }
         }
 
-        function switchView(mode) {
+        switchView(mode) {
             currentMode = mode;
             document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
             document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
@@ -1590,7 +1639,7 @@
         }
 
         function updateShooterGameSource() {
-            appSettings.shooterGameUrl = document.getElementById('input-shooter-url').value.trim() || 'https://taanzzz.github.io/';
+            appSettings.shooterGameUrl = document.getElementById('input-shooter-url').value.trim() || 'https://4xw1n.github.io/shooter/';
             localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
         }
 
@@ -1611,16 +1660,39 @@
             elStatusText.innerText = appSettings.statusCustomText;
         }
 
-        function toggleShooterGamePortal(open) {
+        // --- Shooter Match Framework Integrations ---
+        function toggleShooterGamePortal(open, specificMatchUrl = null) {
             const modal = document.getElementById('game-portal-modal');
             const iframe = document.getElementById('game-viewport-frame');
             if(open) {
-                iframe.src = appSettings.shooterGameUrl;
+                // If a specific party link was clicked, use it; otherwise load base configured URL
+                iframe.src = specificMatchUrl || appSettings.shooterGameUrl;
                 modal.style.display = 'flex';
             } else {
                 iframe.src = 'about:blank';
                 modal.style.display = 'none';
             }
+        }
+
+        function sendPartyInviteToChat() {
+            const iframe = document.getElementById('game-viewport-frame');
+            let runtimeUrl = appSettings.shooterGameUrl;
+            
+            // Try to extract the live room address dynamically if the iframe state tracking holds it
+            try {
+                if (iframe.contentWindow && iframe.contentWindow.location.href !== 'about:blank') {
+                    runtimeUrl = iframe.contentWindow.location.href;
+                }
+            } catch(e) {
+                // Fallback room constructor logic if cross-origin rules prevent live state extraction
+                if(!runtimeUrl.includes('#') && !runtimeUrl.includes('?')) {
+                    runtimeUrl += `?room=${appSettings.username}-${Math.random().toString(36).substring(2,6)}`;
+                }
+            }
+
+            // Transmit structural party token syntax
+            transmitMessage(`:::PARTY_INVITE:::${runtimeUrl}`);
+            alert("Match invite shared successfully!");
         }
 
         function initializeReplyContext(msgUID, authorName, textSnippet) {
@@ -1666,7 +1738,7 @@
             let activeTypers = [];
 
             for (let typer in runningTypingTrackMap) {
-                if (now - runningTypingTrackMap[typer] < 3000) { // 3 seconds timeout loop
+                if (now - runningTypingTrackMap[typer] < 3000) { 
                     activeTypers.push(typer);
                 }
             }
@@ -1693,7 +1765,6 @@
             `;
         }
 
-        // Clean stale typing tracks
         setInterval(renderTypingInterfaceTrackers, 1500);
 
         function clearChatUI() {
@@ -1720,7 +1791,6 @@
             wrapper.className = 'message-wrapper';
             wrapper.setAttribute('data-uid', msgUID);
 
-            // Append Reply reference header context if present
             if (replyContext) {
                 const replyLine = document.createElement('div');
                 replyLine.className = 'reply-context-line';
@@ -1732,7 +1802,23 @@
             msgDiv.className = 'message';
             
             const avatarStyle = authorAvatar ? `background-image: url('${escapeHTML(authorAvatar)}'); font-size:0;` : `background-color: ${stringToColor(author || 'unknown')}`;
-            const parsedContent = formatMarkdownRichLinksText(text || '');
+            
+            let messageContentHTML = '';
+            
+            // Intercept customized invite card token schemas
+            if (text && text.startsWith(':::PARTY_INVITE:::')) {
+                const targetLink = text.replace(':::PARTY_INVITE:::', '');
+                messageContentHTML = `
+                    <div class="party-invite-card">
+                        <div class="invite-title">🎯 Shooter Squad Invite</div>
+                        <div class="invite-game-name">Join ${author}'s active lobby match</div>
+                        <button class="join-party-btn" onclick="toggleShooterGamePortal(true, '${escapeHTML(targetLink)}')">Launch & Join Match</button>
+                    </div>
+                `;
+            } else {
+                const parsedContent = formatMarkdownRichLinksText(text || '');
+                messageContentHTML = text ? `<div class="message-text">${parsedContent}</div>` : '';
+            }
 
             msgDiv.innerHTML = `
                 <div class="avatar" style="${avatarStyle}">${(author || '??').substring(0, 2).toUpperCase()}</div>
@@ -1741,12 +1827,12 @@
                         <span class="message-author">${author || 'Unknown'}</span>
                         <span class="message-timestamp">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
-                    ${text ? `<div class="message-text">${parsedContent}</div>` : ''}
+                    ${messageContentHTML}
                     ${mediaUrl ? `<img src="${escapeHTML(mediaUrl)}" class="chat-image" onerror="this.style.display='none';">` : ''}
                 </div>
                 
                 <div class="message-actions-overlay">
-                    <button class="msg-action-btn" onclick="initializeReplyContext('${msgUID}', '${escapeHTML(author)}', '${escapeHTML(text || '[Media Attachment]')}')">Reply</button>
+                    <button class="msg-action-btn" onclick="initializeReplyContext('${msgUID}', '${escapeHTML(author)}', '${escapeHTML(text || '[Attachment]')}')">Reply</button>
                     <button class="msg-action-btn mod-delete" onclick="triggerModeratorDelete('${msgUID}')">🛡️ Delete</button>
                 </div>
             `;
@@ -1761,9 +1847,7 @@
 
         function formatMarkdownRichLinksText(rawStr) {
             let safe = escapeHTML(rawStr);
-            // Replace *italics*
             safe = safe.replace(/\*(.*?)\*/g, '<em>$1</em>');
-            // Inject inline hyperlinks clickable context safely
             const linkPattern = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
             safe = safe.replace(linkPattern, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
             return safe;
@@ -1788,13 +1872,13 @@
                 if (payload.type === 'friend_handshake') {
                     if (!appSettings.directMessages.includes(payload.sender) && !appSettings.pendingRequests.includes(payload.sender)) {
                         appSettings.pendingRequests.push(payload.sender);
-                        localStorage.setItem('dumscored_user', JSON.stringify(appSettings));
+                        localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                         renderSidebars();
                     }
                 } else if (payload.type === 'friend_accepted') {
                     if (!appSettings.directMessages.includes(payload.sender)) {
                         appSettings.directMessages.push(payload.sender);
-                        localStorage.setItem('dumscored_user', JSON.stringify(appSettings));
+                        localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                         if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`, { qos: 1 });
                         mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
                         renderSidebars();
@@ -1833,7 +1917,7 @@
 
         function transmitMessage(forcedText = null, forcedMedia = null) {
             if (!mqttClient || !mqttClient.connected) {
-                alert("Connection lost. Re-establishing connection...");
+                alert("Network frame offline. Attempting sync repair...");
                 initNetwork();
                 return;
             }
@@ -1854,7 +1938,7 @@
                 mediaUrl: mediaUrl, 
                 timestamp: Date.now(),
                 authorAvatar: appSettings.avatarUrl || '',
-                replyContext: activeReplyPayload // Append explicit context bindings
+                replyContext: activeReplyPayload 
             };
             
             let destinationTopic = '';
@@ -1950,7 +2034,7 @@
             document.getElementById('input-status-custom-text').value = appSettings.statusCustomText || 'Online';
             document.getElementById('select-theme').value = appSettings.theme;
             document.getElementById('input-font-size').value = appSettings.fontSize;
-            document.getElementById('input-shooter-url').value = appSettings.shooterGameUrl || 'https://taanzzz.github.io/';
+            document.getElementById('input-shooter-url').value = appSettings.shooterGameUrl || 'https://4xw1n.github.io/shooter/';
 
             updateAccessibility();
             loadCacheFromLocalStorage();
@@ -1965,7 +2049,6 @@
             if (e.key === 'Enter') transmitMessage();
         });
 
-        // Bootstrap memory check routine execution
         const cached = localStorage.getItem('dumscored_clone_user');
         if (cached) {
             const parsed = JSON.parse(cached);
@@ -1978,7 +2061,7 @@
                 if(!appSettings.avatarUrl) appSettings.avatarUrl = '';
                 if(!appSettings.statusType) appSettings.statusType = 'online';
                 if(!appSettings.statusCustomText) appSettings.statusCustomText = 'Online';
-                if(!appSettings.shooterGameUrl) appSettings.shooterGameUrl = 'https://taanzzz.github.io/';
+                if(!appSettings.shooterGameUrl) appSettings.shooterGameUrl = 'https://4xw1n.github.io/shooter/';
                 
                 document.getElementById('login-screen').style.display = 'none';
                 completeStartup();

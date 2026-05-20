@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Discord Lite Mobile Ultimate</title>
+    <title>Dumscored</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         :root {
@@ -762,7 +762,7 @@
                 <div class="setting-group">
                     <label for="select-theme">Theme Profile</label>
                     <select id="select-theme" onchange="updateAccessibility()">
-                        <option value="dark">Discord Dark</option>
+                        <option value="dark">Dumscored Dark</option>
                         <option value="light">Classic Light</option>
                         <option value="amoled">High Contrast AMOLED Black</option>
                         <option value="deuteranopia">Colorblind Assist</option>
@@ -829,11 +829,11 @@
         }
 
         function saveCacheToLocalStorage() {
-            localStorage.setItem(`discord_history_${appSettings.networkID || 'global'}`, JSON.stringify(chatHistoryCache));
+            localStorage.setItem(`dumscored_history_${appSettings.networkID || 'global'}`, JSON.stringify(chatHistoryCache));
         }
 
         function loadCacheFromLocalStorage() {
-            const storedHistory = localStorage.getItem(`discord_history_${appSettings.networkID || 'global'}`);
+            const storedHistory = localStorage.getItem(`dumscored_history_${appSettings.networkID || 'global'}`);
             chatHistoryCache = storedHistory ? JSON.parse(storedHistory) : {};
         }
 
@@ -846,13 +846,13 @@
             appSettings.username = nameInput;
             appSettings.passwordHash = btoa(passInput); 
             
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
             document.getElementById('login-screen').style.display = 'none';
             completeStartup();
         }
 
         function handleLogout() {
-            localStorage.removeItem('discord_clone_user');
+            localStorage.removeItem('dumscored_clone_user');
             window.location.reload();
         }
 
@@ -879,11 +879,11 @@
             }
 
             mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-                keepalive: 10, // Catch mobile background connection drops quickly
+                keepalive: 10, 
                 reconnectPeriod: 1000,
                 connectTimeout: 10 * 1000,
                 clean: false, 
-                clientId: 'disc_cl_' + appSettings.username + '_' + Math.random().toString(16).substring(2,6)
+                clientId: 'dum_cl_' + appSettings.username + '_' + Math.random().toString(16).substring(2,6)
             });
 
             mqttClient.on('connect', () => {
@@ -892,19 +892,16 @@
                     statusBadge.style.backgroundColor = "var(--success-color)";
                 }
                 
-                // Subscribe to Server Channels
                 if (appSettings.groupChannels) {
                     appSettings.groupChannels.forEach(ch => mqttClient.subscribe(`${appSettings.networkID}/servers/${ch}`, { qos: 1 }));
                 }
                 
-                // Subscribe to Symmetrical DM Nodes
                 if (appSettings.directMessages) {
                     appSettings.directMessages.forEach(dm => {
                         mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(dm)}`, { qos: 1 });
                     });
                 }
                 
-                // Subscribe to Private Mailbox Pipeline Node
                 mqttClient.subscribe(`${appSettings.networkID}/inbox/${appSettings.username}`, { qos: 1 });
             });
 
@@ -938,7 +935,6 @@
             });
         }
 
-        // MOBILE RECONNECT LAYER: Monitors phone sleep wake-ups and active browser tab shifts
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 if (!mqttClient || !mqttClient.connected) {
@@ -1113,7 +1109,7 @@
                 appSettings.directMessages.push(senderName);
             }
             
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
 
             if (mqttClient) {
                 mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(senderName)}`, { qos: 1 });
@@ -1132,7 +1128,7 @@
 
         function ignoreFriendRequest(senderName) {
             appSettings.pendingRequests = appSettings.pendingRequests.filter(u => u !== senderName);
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
             if (mqttClient) {
                 mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
             }
@@ -1151,7 +1147,7 @@
                 appSettings.groupChannels.push(cleanValue);
                 if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/servers/${cleanValue}`, { qos: 1 });
                 currentGroup = cleanValue;
-                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                 renderSidebars();
                 loadActiveChatFromCache();
             }
@@ -1160,7 +1156,7 @@
         function removeDirectMessageContext(targetDM) {
             if(confirm(`Remove ${targetDM} from active listings?`)) {
                 appSettings.directMessages = appSettings.directMessages.filter(user => user !== targetDM);
-                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                 if(currentDM === targetDM) currentDM = '';
                 renderSidebars();
                 loadActiveChatFromCache();
@@ -1200,17 +1196,16 @@
             loadActiveChatFromCache();
         }
 
-        // SAFE SERVER PROMPT CONTROL: Handles cancellations securely
         function promptCreateServer() {
             const rawOption = prompt("Type 'CREATE' to make a new server, or paste an existing Invite Code:");
-            if (rawOption === null) return; // Terminate execution safely on Cancel
+            if (rawOption === null) return; 
             
             const option = rawOption.trim();
             if (!option) return;
 
             if (option.toUpperCase() === 'CREATE') {
                 const serverName = prompt("Enter server hub name:");
-                if (serverName === null) return; // Terminate execution safely on Cancel
+                if (serverName === null) return; 
                 
                 const cleanName = serverName.trim();
                 if (!cleanName) return;
@@ -1230,7 +1225,7 @@
                 currentDM = '';
             }
             
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
             loadCacheFromLocalStorage();
             completeStartup();
             toggleMobileNav(false);
@@ -1243,7 +1238,7 @@
 
             if(!appSettings.blockedUsers.includes(target)) {
                 appSettings.blockedUsers.push(target);
-                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                 renderBlockedList();
                 loadActiveChatFromCache();
             }
@@ -1252,7 +1247,7 @@
 
         function unblockUser(target) {
             appSettings.blockedUsers = appSettings.blockedUsers.filter(u => u !== target);
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
             renderBlockedList();
         }
 
@@ -1304,7 +1299,6 @@
             `;
             container.appendChild(msgDiv);
             
-            // Allow layout micro-delay adjustments for mobile asset parsing
             setTimeout(() => {
                 container.scrollTop = container.scrollHeight;
             }, 30);
@@ -1329,13 +1323,13 @@
                 if (payload.type === 'friend_handshake') {
                     if (!appSettings.directMessages.includes(payload.sender) && !appSettings.pendingRequests.includes(payload.sender)) {
                         appSettings.pendingRequests.push(payload.sender);
-                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                        localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                         renderSidebars();
                     }
                 } else if (payload.type === 'friend_accepted') {
                     if (!appSettings.directMessages.includes(payload.sender)) {
                         appSettings.directMessages.push(payload.sender);
-                        localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                        localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                         if (mqttClient) mqttClient.subscribe(`${appSettings.networkID}/dms/${getDMScope(payload.sender)}`, { qos: 1 });
                         mqttClient.publish(`${appSettings.networkID}/inbox/${appSettings.username}`, "", { retain: true });
                         renderSidebars();
@@ -1357,7 +1351,7 @@
                     if (dynamicPartnerKey) {
                         if (!appSettings.directMessages.includes(dynamicPartnerKey)) {
                             appSettings.directMessages.push(dynamicPartnerKey);
-                            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                             renderSidebars();
                         }
 
@@ -1415,7 +1409,7 @@
             const netId = document.getElementById('input-app-id').value.trim();
             if(netId) {
                 appSettings.networkID = netId;
-                localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+                localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
                 loadCacheFromLocalStorage();
                 initNetwork();
                 renderSidebars();
@@ -1428,11 +1422,11 @@
             const size = document.getElementById('input-font-size').value;
             appSettings.theme = theme;
             appSettings.fontSize = size;
-            localStorage.setItem('discord_clone_user', JSON.stringify(appSettings));
+            localStorage.setItem('dumscored_clone_user', JSON.stringify(appSettings));
             document.documentElement.style.fontSize = size;
 
             const root = document.documentElement;
-            if (theme === 'dark') {
+            if (theme === 'dark' || theme === 'dumscored-dark') {
                 root.style.setProperty('--bg-primary', '#313338');
                 root.style.setProperty('--bg-sidebar', '#2b2d31');
                 root.style.setProperty('--bg-servers', '#1e1f22');
@@ -1472,8 +1466,7 @@
             document.getElementById('input-username').value = appSettings.username;
             document.getElementById('user-avatar').innerText = appSettings.username.substring(0,2).toUpperCase();
             document.getElementById('user-name-display').innerText = appSettings.username;
-            document.getElementById('select-theme').value = appSettings.theme;
-            document.getElementById('input-font-size').value = appSettings.fontSize;
+            document.getElementById('select-theme').value = appSettings.theme === 'dark' ? 'dark' : appSettings.theme;
 
             updateAccessibility();
             loadCacheFromLocalStorage();
@@ -1488,7 +1481,7 @@
         });
 
         // Bootstrap memory check routine execution
-        const cached = localStorage.getItem('discord_clone_user');
+        const cached = localStorage.getItem('dumscored_clone_user');
         if (cached) {
             const parsed = JSON.parse(cached);
             if (parsed.username) {

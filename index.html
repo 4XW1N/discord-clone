@@ -405,6 +405,16 @@
             min-width: 0;
         }
 
+        .mobile-nav-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-normal);
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+
         .header-right-actions {
             display: flex;
             align-items: center;
@@ -1549,7 +1559,7 @@
             }
         }
 
-        switchView(mode) {
+        function switchView(mode) {
             currentMode = mode;
             document.getElementById('server-view-btn').classList.toggle('active', mode === 'servers');
             document.getElementById('dm-view-btn').classList.toggle('active', mode === 'dms');
@@ -1665,7 +1675,6 @@
             const modal = document.getElementById('game-portal-modal');
             const iframe = document.getElementById('game-viewport-frame');
             if(open) {
-                // If a specific party link was clicked, use it; otherwise load base configured URL
                 iframe.src = specificMatchUrl || appSettings.shooterGameUrl;
                 modal.style.display = 'flex';
             } else {
@@ -1678,19 +1687,16 @@
             const iframe = document.getElementById('game-viewport-frame');
             let runtimeUrl = appSettings.shooterGameUrl;
             
-            // Try to extract the live room address dynamically if the iframe state tracking holds it
             try {
                 if (iframe.contentWindow && iframe.contentWindow.location.href !== 'about:blank') {
                     runtimeUrl = iframe.contentWindow.location.href;
                 }
             } catch(e) {
-                // Fallback room constructor logic if cross-origin rules prevent live state extraction
                 if(!runtimeUrl.includes('#') && !runtimeUrl.includes('?')) {
                     runtimeUrl += `?room=${appSettings.username}-${Math.random().toString(36).substring(2,6)}`;
                 }
             }
 
-            // Transmit structural party token syntax
             transmitMessage(`:::PARTY_INVITE:::${runtimeUrl}`);
             alert("Match invite shared successfully!");
         }
@@ -1805,7 +1811,6 @@
             
             let messageContentHTML = '';
             
-            // Intercept customized invite card token schemas
             if (text && text.startsWith(':::PARTY_INVITE:::')) {
                 const targetLink = text.replace(':::PARTY_INVITE:::', '');
                 messageContentHTML = `
